@@ -44,24 +44,30 @@ OIDC-based SSH without operating a secrets platform.
 
 ## Documentation
 
-The full documentation lives in [`docs/`](docs/) (Sphinx):
+The full documentation is at
+**[oidc-ssh-ca.readthedocs.io](https://oidc-ssh-ca.readthedocs.io/)** —
+start with the
+**[Quickstart](https://oidc-ssh-ca.readthedocs.io/en/latest/quickstart.html)**.
 
-- [Quickstart](docs/quickstart.md) — CA key, policy, server, sshd, and the
-  GitHub Actions workflow, end to end
-- [Choosing a deployment](docs/deployment/index.md) —
-  [Cloud Run](docs/deployment/cloud-run.md) (recommended),
-  [Docker Compose + Caddy](docs/deployment/docker-compose.md),
-  [AWS Lambda via CLI](docs/deployment/lambda-cli.md) or
-  [Terraform](docs/deployment/lambda-terraform.md), and
-  [systemd](docs/deployment/systemd.md)
-- Reference — [policy format](docs/policy.md), [the /sign API](docs/api.md),
-  [commands](docs/commands.md), and
-  [operations](docs/operations.md) (audit log, reload, emergency stop,
-  key rotation)
-- [Testing](docs/testing.md) — running the test suite, including the local
-  end-to-end tests with a mock OIDC provider
+- [Quickstart](https://oidc-ssh-ca.readthedocs.io/en/latest/quickstart.html) —
+  CA key, policy, server, sshd, and the GitHub Actions workflow, end to end
+- [Choosing a deployment](https://oidc-ssh-ca.readthedocs.io/en/latest/deployment/index.html) —
+  [Cloud Run](https://oidc-ssh-ca.readthedocs.io/en/latest/deployment/cloud-run.html) (recommended),
+  [Docker Compose + Caddy](https://oidc-ssh-ca.readthedocs.io/en/latest/deployment/docker-compose.html),
+  [AWS Lambda via CLI](https://oidc-ssh-ca.readthedocs.io/en/latest/deployment/lambda-cli.html) or
+  [Terraform](https://oidc-ssh-ca.readthedocs.io/en/latest/deployment/lambda-terraform.html), and
+  [systemd](https://oidc-ssh-ca.readthedocs.io/en/latest/deployment/systemd.html)
+- Reference —
+  [policy format](https://oidc-ssh-ca.readthedocs.io/en/latest/policy.html),
+  [the /sign API](https://oidc-ssh-ca.readthedocs.io/en/latest/api.html),
+  [commands](https://oidc-ssh-ca.readthedocs.io/en/latest/commands.html), and
+  [operations](https://oidc-ssh-ca.readthedocs.io/en/latest/operations.html)
+  (audit log, reload, emergency stop, key rotation)
+- [Testing](https://oidc-ssh-ca.readthedocs.io/en/latest/testing.html) —
+  running the test suite, including the local end-to-end tests with a mock
+  OIDC provider
 
-To build the HTML docs locally:
+The sources are in [`docs/`](docs/); to build locally:
 
 ```bash
 pip install -r docs/requirements.txt

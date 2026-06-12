@@ -12,6 +12,9 @@ myst_enable_extensions = [
     "colon_fence",
 ]
 
+# Auto-generate anchors for h1-h3 so pages can link to their own sections.
+myst_heading_anchors = 3
+
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 html_theme = "sphinx_rtd_theme"
