@@ -7,3 +7,7 @@ ca_key
 ca_key.pub
 *.jwt
 gha_key*
+
+# Local scratch policy files
+/policy.yml
+/policy.yaml
