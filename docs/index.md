@@ -22,9 +22,35 @@ short-lived OpenSSH user certificate
 target servers (trust only the CA public key)
 ```
 
-For the policy format, the GitHub Actions workflow, and sshd configuration,
-see the [README](https://github.com/atsuoishimoto/oidc-ssh-ca#readme). This
-documentation focuses on deploying and operating the CA itself.
+This is not a replacement for Vault, OpenBao, or Teleport. It is a small,
+single-binary certificate issuer for individuals and small teams who want
+OIDC-based SSH without operating a secrets platform.
+
+## Design guarantees
+
+- **No subprocesses, no temporary files, no external SSH tools.** All key
+  parsing and certificate signing happens in memory via
+  `golang.org/x/crypto/ssh`. The CA private key is never written to disk.
+- **The policy decides everything.** Principals, TTL, extensions, and the
+  certificate key ID are derived from verified JWT claims and `policy.yaml`.
+  The request body carries only the public key — a caller cannot request a
+  principal or a longer TTL.
+- **Deny by default, exactly one match.** A request is allowed only if
+  exactly one enabled rule matches. Zero matches deny; multiple matches deny
+  (no first-match-wins surprises). A claim referenced by a rule but absent
+  from the token denies.
+- **Fail safe.** An invalid policy prevents startup; a failed reload keeps
+  the previous policy; a JWKS outage without cached keys denies.
+- **Generic errors.** Callers get a fixed message and a request ID. Denial
+  reasons and details go only to the server's audit log, so the policy
+  cannot be probed by varying claims.
+
+```{toctree}
+:maxdepth: 2
+:caption: Getting started
+
+quickstart
+```
 
 ```{toctree}
 :maxdepth: 2
@@ -36,4 +62,14 @@ deployment/docker-compose
 deployment/lambda-cli
 deployment/lambda-terraform
 deployment/systemd
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Reference
+
+policy
+api
+commands
+operations
 ```
