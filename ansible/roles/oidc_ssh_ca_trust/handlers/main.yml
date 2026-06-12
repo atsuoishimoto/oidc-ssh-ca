@@ -1,0 +1,14 @@
+---
+# Both handlers listen on "Reload sshd" and run in this order: the full
+# configuration is validated before sshd is reloaded, so a broken config
+# never takes effect.
+- name: Validate the full sshd configuration
+  ansible.builtin.command: "{{ oidc_ssh_ca_sshd_binary }} -t"
+  changed_when: false
+  listen: Reload sshd
+
+- name: Reload the sshd service
+  ansible.builtin.service:
+    name: "{{ oidc_ssh_ca_sshd_service }}"
+    state: reloaded
+  listen: Reload sshd

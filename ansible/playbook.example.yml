@@ -1,0 +1,22 @@
+---
+# Example playbook for the oidc_ssh_ca_trust role.
+#
+# Export the CA public key first:
+#   oidc-ssh-ca print-ca-pub --ca-key-file ./ca_key > oidc-ssh-ca.pub
+#
+# Then run:
+#   ansible-playbook -i inventory.ini playbook.example.yml
+
+- name: Trust the oidc-ssh-ca certificate authority
+  hosts: app_servers
+  become: true
+  roles:
+    - role: oidc_ssh_ca_trust
+      oidc_ssh_ca_public_key: "{{ lookup('file', './oidc-ssh-ca.pub') }}"
+      oidc_ssh_ca_users:
+        - user: deploy
+          principals:
+            - gha-prod-deploy
+        - user: staging
+          principals:
+            - gha-staging-deploy
