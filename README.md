@@ -58,6 +58,8 @@ The full documentation lives in [`docs/`](docs/) (Sphinx):
   [commands](docs/commands.md), and
   [operations](docs/operations.md) (audit log, reload, emergency stop,
   key rotation)
+- [Testing](docs/testing.md) — running the test suite, including the local
+  end-to-end tests with a mock OIDC provider
 
 To build the HTML docs locally:
 
