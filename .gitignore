@@ -11,3 +11,6 @@ gha_key*
 # Local scratch policy files
 /policy.yml
 /policy.yaml
+
+# Sphinx build output
+/docs/_build/

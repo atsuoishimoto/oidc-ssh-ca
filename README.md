@@ -45,6 +45,17 @@ OIDC-based SSH without operating a secrets platform.
   reasons and details go only to the server's audit log, so the policy
   cannot be probed by varying claims.
 
+## Documentation
+
+Deployment guides — Google Cloud Run (recommended), Docker Compose + Caddy,
+AWS Lambda (AWS CLI or Terraform), and systemd — are in [`docs/`](docs/),
+built with Sphinx:
+
+```bash
+pip install -r docs/requirements.txt
+make -C docs html    # docs/_build/html/index.html
+```
+
 ## Quickstart
 
 ### 1. Generate the CA key
