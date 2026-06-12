@@ -1,0 +1,13 @@
+# Example sshd configuration for servers that accept oidc-ssh-ca
+# certificates. Drop into /etc/ssh/sshd_config.d/oidc-ssh-ca.conf and
+# place the CA public key (oidc-ssh-ca print-ca-pub) at
+# /etc/ssh/oidc-ssh-ca.pub.
+#
+# Validate with `sshd -t` before reloading sshd.
+
+TrustedUserCAKeys /etc/ssh/oidc-ssh-ca.pub
+
+Match User deploy
+    AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no

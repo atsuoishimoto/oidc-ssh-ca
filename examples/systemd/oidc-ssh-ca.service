@@ -1,0 +1,38 @@
+# Example systemd unit for oidc-ssh-ca.
+#
+# Install:
+#   /usr/local/bin/oidc-ssh-ca
+#   /etc/oidc-ssh-ca/policy.yaml
+#   /etc/oidc-ssh-ca/ca_key        (mode 0600, owned by root)
+#
+# The CA key is passed as a systemd credential: it is exposed only to
+# this service, under the path %d/ca_key.
+
+[Unit]
+Description=oidc-ssh-ca - short-lived SSH certificate issuer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/oidc-ssh-ca serve --config /etc/oidc-ssh-ca/policy.yaml --listen :8080
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+
+DynamicUser=yes
+LoadCredential=ca_key:/etc/oidc-ssh-ca/ca_key
+Environment=OIDC_SSH_CA_KEY_FILE=%d/ca_key
+
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

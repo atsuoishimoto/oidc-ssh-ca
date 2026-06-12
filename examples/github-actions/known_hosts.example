@@ -1,0 +1,9 @@
+# Commit this file to the repository as .ssh/known_hosts.
+#
+# Obtain the entries once, over a trusted channel (e.g. on the server
+# itself or via your provider's console):
+#
+#   ssh-keyscan -t ed25519 example.com
+#
+# One line per host:
+example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...replace-with-real-host-key

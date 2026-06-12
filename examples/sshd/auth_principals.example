@@ -1,0 +1,5 @@
+# /etc/ssh/auth_principals/deploy
+#
+# Certificate principals allowed to log in as the "deploy" user, one
+# per line. Must match certificate.principals in policy.yaml.
+gha-prod-deploy

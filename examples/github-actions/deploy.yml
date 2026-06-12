@@ -1,0 +1,66 @@
+# Example GitHub Actions workflow: deploy over SSH with a short-lived
+# certificate from oidc-ssh-ca.
+#
+# Repository prerequisites:
+#   - .ssh/known_hosts committed to the repository (pinned host keys,
+#     obtained once by the administrator over a trusted channel).
+#     See known_hosts.example.
+#   - OIDC_SSH_CA_URL configured as a repository/environment variable.
+#
+# The `audience` query parameter and the claims this workflow produces
+# (repository, ref, environment, event_name, job_workflow_ref) must
+# match a rule in the CA's policy.yaml.
+
+name: Deploy with SSH certificate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate ephemeral SSH key
+        run: ssh-keygen -t ed25519 -N "" -f gha_key
+
+      - name: Get GitHub OIDC token
+        run: |
+          curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=ssh-ca-prod" \
+            | jq -r .value > oidc.jwt
+
+      - name: Request SSH certificate
+        env:
+          OIDC_SSH_CA_URL: ${{ vars.OIDC_SSH_CA_URL }}
+        run: |
+          jq -n --arg public_key "$(cat gha_key.pub)" \
+            '{ public_key: $public_key }' > request.json
+
+          curl -sS --fail "$OIDC_SSH_CA_URL/sign" \
+            -H "Authorization: Bearer $(cat oidc.jwt)" \
+            -H "Content-Type: application/json" \
+            --data @request.json \
+            -o gha_key-cert.pub
+
+      - name: Show certificate
+        run: ssh-keygen -L -f gha_key-cert.pub
+
+      - name: Deploy
+        run: |
+          # Host keys are pinned: known_hosts is committed to the repo.
+          ssh \
+            -i gha_key \
+            -o CertificateFile=gha_key-cert.pub \
+            -o IdentitiesOnly=yes \
+            -o UserKnownHostsFile=./.ssh/known_hosts \
+            -o StrictHostKeyChecking=yes \
+            deploy@example.com \
+            'hostname && whoami'

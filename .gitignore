@@ -1,0 +1,9 @@
+# Binaries
+/oidc-ssh-ca
+/dist/
+
+# Local keys and tokens (never commit key material)
+ca_key
+ca_key.pub
+*.jwt
+gha_key*
