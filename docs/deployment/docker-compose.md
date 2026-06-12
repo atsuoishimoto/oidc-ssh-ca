@@ -30,9 +30,8 @@ sudo chown 65532:65532 ca_key
 sudo chmod 0600 ca_key
 ```
 
-Write `policy.yaml` (see the
-[README](https://github.com/atsuoishimoto/oidc-ssh-ca#readme) for the
-format), and put your domain in the `Caddyfile`:
+Write `policy.yaml` (see the [policy reference](../policy.md)), and put
+your domain in the `Caddyfile`:
 
 ```text
 ca.example.com {

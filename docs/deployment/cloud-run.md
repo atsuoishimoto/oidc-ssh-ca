@@ -17,9 +17,8 @@ mounted file.
 ssh-keygen -t ed25519 -N "" -f ca_key -C "oidc-ssh-ca"
 ```
 
-Write your `policy.yaml` (see the
-[README](https://github.com/atsuoishimoto/oidc-ssh-ca#readme) for the format)
-and validate it:
+Write your `policy.yaml` (see the [policy reference](../policy.md)) and
+validate it:
 
 ```bash
 oidc-ssh-ca check-config policy.yaml
