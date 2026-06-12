@@ -175,6 +175,7 @@ certificates does not help if the connection itself is not verified.
 
 ```text
 oidc-ssh-ca serve --config policy.yaml [--listen :8080] [--ca-key-file PATH]
+oidc-ssh-ca lambda [--config policy.yaml]
 oidc-ssh-ca check-config policy.yaml
 oidc-ssh-ca explain --policy policy.yaml --claims claims.json
 oidc-ssh-ca print-ca-pub [--ca-key-file PATH]
@@ -184,6 +185,116 @@ oidc-ssh-ca print-ca-pub [--ca-key-file PATH]
 unknown claims and overly broad rules. `explain` evaluates a claim set (a
 decoded JWT payload as JSON) against the policy and reports which rule
 matched — or, for each rule, the first condition that failed.
+
+## Running on AWS Lambda
+
+The binary handles Lambda Function URL events natively — no HTTP server,
+no container image, no adapter layer. When started without arguments
+inside Lambda (deployed as `bootstrap` on `provided.al2023`), it serves
+events directly; the request and response format is identical to the
+standalone server, so the GitHub Actions workflow is unchanged.
+
+```bash
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
+  go build -trimpath -ldflags="-s -w" -tags lambda.norpc \
+  -o bootstrap ./cmd/oidc-ssh-ca
+zip lambda.zip bootstrap policy.yaml
+```
+
+Function configuration:
+
+- Runtime `provided.al2023`, handler name is ignored
+- `OIDC_SSH_CA_KEY`: the CA private key (Lambda environment variables are
+  encrypted at rest)
+- `OIDC_SSH_CA_CONFIG` (optional): policy path, defaults to `policy.yaml`
+  in the zip
+- A Function URL; the `/sign` endpoint authenticates callers by verifying
+  their OIDC token, the same model as running the server on a public host
+
+### Deploying with the AWS CLI
+
+Create the execution role (CloudWatch Logs only):
+
+```bash
+aws iam create-role --role-name oidc-ssh-ca-lambda \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": {"Service": "lambda.amazonaws.com"},
+      "Action": "sts:AssumeRole"
+    }]
+  }'
+
+aws iam attach-role-policy --role-name oidc-ssh-ca-lambda \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+```
+
+Create the function. The CA key is multi-line, so build the
+`--environment` JSON with `jq` instead of inlining it. (If the role was
+created seconds ago, IAM propagation may make this fail once — retry.)
+
+```bash
+aws lambda create-function \
+  --function-name oidc-ssh-ca \
+  --runtime provided.al2023 \
+  --architectures arm64 \
+  --handler bootstrap \
+  --role "$(aws iam get-role --role-name oidc-ssh-ca-lambda --query Role.Arn --output text)" \
+  --zip-file fileb://lambda.zip \
+  --timeout 10 \
+  --memory-size 128 \
+  --environment "$(jq -n --rawfile key ca_key '{Variables: {OIDC_SSH_CA_KEY: $key}}')"
+
+# Bound the cost of an unauthenticated endpoint.
+aws lambda put-function-concurrency \
+  --function-name oidc-ssh-ca \
+  --reserved-concurrent-executions 5
+```
+
+Create the Function URL and allow public invocation (`/sign` itself
+authenticates callers by verifying their OIDC token):
+
+```bash
+aws lambda create-function-url-config \
+  --function-name oidc-ssh-ca \
+  --auth-type NONE
+
+aws lambda add-permission \
+  --function-name oidc-ssh-ca \
+  --statement-id allow-public-function-url \
+  --action lambda:InvokeFunctionUrl \
+  --principal "*" \
+  --function-url-auth-type NONE
+```
+
+The first command prints the `FunctionUrl` — that is the
+`OIDC_SSH_CA_URL` for the GitHub Actions workflow.
+
+To update the binary or the policy, rebuild the zip and redeploy:
+
+```bash
+zip lambda.zip bootstrap policy.yaml
+aws lambda update-function-code --function-name oidc-ssh-ca \
+  --zip-file fileb://lambda.zip
+```
+
+Emergency stop (immediate, no redeploy):
+
+```bash
+aws lambda put-function-concurrency \
+  --function-name oidc-ssh-ca \
+  --reserved-concurrent-executions 0
+```
+
+### Operational differences from standalone
+
+The policy is loaded once at
+cold start (no SIGHUP — deploy a new zip to change it), and the fastest
+emergency stop is setting the function's reserved concurrency to 0. With
+an unauthenticated Function URL anyone can invoke the function, so cap
+reserved concurrency and set a CloudWatch alarm to bound cost; audit
+logs go to CloudWatch Logs.
 
 ## Operations
 
@@ -225,10 +336,11 @@ passed.
 
 ## Status
 
-MVP. GitHub Actions OIDC (RS256) is the supported identity source; only
-`ssh-ed25519` keys are accepted for both the CA and client keys. AWS
-IAM/Lambda support, Terraform modules, and an Ansible role are planned —
-see `.memo/memo.md` for the full design document.
+MVP plus native Lambda support. GitHub Actions OIDC (RS256) is the
+supported identity source; only `ssh-ed25519` keys are accepted for both
+the CA and client keys. AWS IAM identity matching, Terraform modules, and
+an Ansible role are planned — see `.memo/memo.md` for the full design
+document.
 
 ## License
 

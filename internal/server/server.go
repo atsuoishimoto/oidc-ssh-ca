@@ -1,4 +1,6 @@
-// Package server implements the HTTP API: POST /sign.
+// Package server implements the signing flow behind POST /sign and the
+// transports that expose it (net/http here, AWS Lambda in
+// internal/lambda).
 //
 // Error responses are deliberately generic — a fixed message plus a
 // request ID. Denial reasons and internal details go only to the audit
@@ -6,12 +8,14 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -23,8 +27,8 @@ import (
 	"github.com/atsuoishimoto/oidc-ssh-ca/internal/policy"
 )
 
-// maxRequestBody bounds the /sign request body.
-const maxRequestBody = 16 * 1024
+// MaxRequestBody bounds the /sign request body for every transport.
+const MaxRequestBody = 16 * 1024
 
 // Audit deny reason codes in addition to those defined by policy.
 const (
@@ -43,8 +47,19 @@ var auditedClaims = []string{
 	"job_workflow_ref", "workflow", "actor", "run_id", "run_attempt",
 }
 
-// Server handles /sign. The active policy is swapped atomically on
-// SIGHUP reload.
+// Response is the transport-agnostic outcome of a signing attempt. On
+// success Body is the certificate (text/plain); on denial it is the
+// generic JSON error. The audit event has already been written either
+// way.
+type Response struct {
+	Status      int
+	ContentType string
+	Body        []byte
+	RequestID   string
+}
+
+// Server holds the signing pipeline. The active policy is swapped
+// atomically on SIGHUP reload.
 type Server struct {
 	signer   issuer.Signer
 	verifier oidc.Verifier
@@ -67,61 +82,49 @@ func (s *Server) SetPolicy(p *policy.Policy) { s.policy.Store(p) }
 // Policy returns the active policy.
 func (s *Server) Policy() *policy.Policy { return s.policy.Load() }
 
-// Handler returns the HTTP handler.
-func (s *Server) Handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/sign", s.handleSign)
-	return mux
-}
-
-type signRequest struct {
-	PublicKey string `json:"public_key"`
-}
-
-func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
+// Sign runs the full pipeline for one request: validate the body and
+// public key, verify the bearer token, match the policy
+// (exactly-one-match), expand and sanitize the key ID, and sign. Every
+// outcome — issued or denied — is audit-logged here, so transports only
+// move bytes.
+func (s *Server) Sign(ctx context.Context, method, authHeader string, body []byte) Response {
 	requestID := newRequestID()
 
-	if r.Method != http.MethodPost {
-		s.deny(w, requestID, http.StatusMethodNotAllowed, reasonBadRequest, "method not allowed: "+r.Method)
-		return
+	if method != http.MethodPost {
+		return s.deny(requestID, http.StatusMethodNotAllowed, reasonBadRequest, "method not allowed: "+method)
 	}
 
 	pol := s.policy.Load()
 	if pol.Disabled {
-		s.deny(w, requestID, http.StatusServiceUnavailable, policy.ReasonPolicyDisabled, "policy is disabled")
-		return
+		return s.deny(requestID, http.StatusServiceUnavailable, policy.ReasonPolicyDisabled, "policy is disabled")
 	}
 
 	// Parse and validate the request body. Only public_key is
 	// accepted; principals, TTL, and extensions come from the policy.
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBody+1))
-	if err != nil || len(body) > maxRequestBody {
-		s.deny(w, requestID, http.StatusBadRequest, reasonBadRequest, "request body unreadable or too large")
-		return
+	if len(body) > MaxRequestBody {
+		return s.deny(requestID, http.StatusBadRequest, reasonBadRequest, "request body too large")
 	}
-	var req signRequest
+	var req struct {
+		PublicKey string `json:"public_key"`
+	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		s.deny(w, requestID, http.StatusBadRequest, reasonBadRequest, "request body is not valid JSON: "+err.Error())
-		return
+		return s.deny(requestID, http.StatusBadRequest, reasonBadRequest, "request body is not valid JSON: "+err.Error())
 	}
 	pub, err := issuer.ValidatePublicKey(req.PublicKey, pol.AllowedPublicKeyTypes())
 	if err != nil {
-		s.deny(w, requestID, http.StatusBadRequest, reasonInvalidPublicKey, err.Error())
-		return
+		return s.deny(requestID, http.StatusBadRequest, reasonInvalidPublicKey, err.Error())
 	}
 	fingerprint := ssh.FingerprintSHA256(pub)
 	keyAttrs := []any{"public_key_fingerprint", fingerprint, "key_type", pub.Type()}
 
 	// Verify the bearer token.
-	rawToken, ok := bearerToken(r)
+	rawToken, ok := bearerToken(authHeader)
 	if !ok {
-		s.deny(w, requestID, http.StatusUnauthorized, reasonMissingToken, "missing or malformed Authorization header", keyAttrs...)
-		return
+		return s.deny(requestID, http.StatusUnauthorized, reasonMissingToken, "missing or malformed Authorization header", keyAttrs...)
 	}
-	id, err := s.verifier.Verify(r.Context(), rawToken, pol.Issuers())
+	id, err := s.verifier.Verify(ctx, rawToken, pol.Issuers())
 	if err != nil {
-		s.deny(w, requestID, http.StatusUnauthorized, reasonTokenInvalid, err.Error(), keyAttrs...)
-		return
+		return s.deny(requestID, http.StatusUnauthorized, reasonTokenInvalid, err.Error(), keyAttrs...)
 	}
 	claimAttrs := append(keyAttrs, identityAttrs(id)...)
 
@@ -136,15 +139,13 @@ func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 		if len(decision.MatchedRules) > 1 {
 			detail = fmt.Sprintf("rules %v all matched", decision.MatchedRules)
 		}
-		s.deny(w, requestID, status, decision.Reason, detail, claimAttrs...)
-		return
+		return s.deny(requestID, status, decision.Reason, detail, claimAttrs...)
 	}
 	rule := decision.Rule
 
 	keyID, err := policy.ExpandKeyID(rule.Certificate.KeyIDTemplate, id.Claims)
 	if err != nil {
-		s.deny(w, requestID, http.StatusForbidden, reasonKeyIDInvalid, err.Error(), claimAttrs...)
-		return
+		return s.deny(requestID, http.StatusForbidden, reasonKeyIDInvalid, err.Error(), claimAttrs...)
 	}
 
 	now := s.now()
@@ -157,8 +158,7 @@ func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 		Extensions:  pol.ExtensionsFor(rule),
 	})
 	if err != nil {
-		s.deny(w, requestID, http.StatusInternalServerError, reasonSigningError, err.Error(), claimAttrs...)
-		return
+		return s.deny(requestID, http.StatusInternalServerError, reasonSigningError, err.Error(), claimAttrs...)
 	}
 
 	s.audit.Issued(requestID, append([]any{
@@ -168,33 +168,59 @@ func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 		"valid_for_seconds", rule.Certificate.ValidForSeconds,
 	}, claimAttrs...)...)
 
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("X-Request-Id", requestID)
-	w.WriteHeader(http.StatusOK)
-	w.Write(certBytes)
+	return Response{
+		Status:      http.StatusOK,
+		ContentType: "text/plain; charset=utf-8",
+		Body:        certBytes,
+		RequestID:   requestID,
+	}
 }
 
-// deny logs the real reason to the audit log and sends a generic
+// deny logs the real reason to the audit log and builds the generic
 // response: fixed message + request ID only.
-func (s *Server) deny(w http.ResponseWriter, requestID string, status int, reason, detail string, attrs ...any) {
+func (s *Server) deny(requestID string, status int, reason, detail string, attrs ...any) Response {
 	s.audit.Denied(requestID, reason, detail, attrs...)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-Request-Id", requestID)
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{
+	body, _ := json.Marshal(map[string]string{
 		"error":      "certificate request denied; contact your administrator with the request_id",
 		"request_id": requestID,
 	})
+	return Response{
+		Status:      status,
+		ContentType: "application/json",
+		Body:        append(body, '\n'),
+		RequestID:   requestID,
+	}
 }
 
-func bearerToken(r *http.Request) (string, bool) {
-	h := r.Header.Get("Authorization")
+// Handler returns the net/http transport.
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/sign", s.handleSign)
+	return mux
+}
+
+func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
+	// Read at most one byte over the limit so Sign can distinguish
+	// "too large" from a valid maximum-size body. A read error yields
+	// a nil body, which fails JSON parsing and is denied as a bad
+	// request.
+	body, _ := io.ReadAll(io.LimitReader(r.Body, MaxRequestBody+1))
+
+	resp := s.Sign(r.Context(), r.Method, r.Header.Get("Authorization"), body)
+
+	w.Header().Set("Content-Type", resp.ContentType)
+	w.Header().Set("X-Request-Id", resp.RequestID)
+	w.WriteHeader(resp.Status)
+	w.Write(resp.Body)
+}
+
+func bearerToken(authHeader string) (string, bool) {
 	const prefix = "Bearer "
-	if len(h) <= len(prefix) || h[:len(prefix)] != prefix {
+	if !strings.HasPrefix(authHeader, prefix) || len(authHeader) == len(prefix) {
 		return "", false
 	}
-	return h[len(prefix):], true
+	return authHeader[len(prefix):], true
 }
 
 func identityAttrs(id *policy.Identity) []any {

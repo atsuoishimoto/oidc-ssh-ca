@@ -252,7 +252,7 @@ func TestSignMethodNotAllowed(t *testing.T) {
 
 func TestSignOversizeBody(t *testing.T) {
 	srv, _ := newTestServer(t, testPolicy, goodIdentity())
-	big := strings.Repeat("x", maxRequestBody+10)
+	big := strings.Repeat("x", MaxRequestBody+10)
 	req := httptest.NewRequest(http.MethodPost, "/sign", io.NopCloser(strings.NewReader(big)))
 	req.Header.Set("Authorization", "Bearer good")
 	rec := httptest.NewRecorder()

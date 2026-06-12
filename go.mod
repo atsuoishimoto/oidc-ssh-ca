@@ -3,6 +3,7 @@ module github.com/atsuoishimoto/oidc-ssh-ca
 go 1.22.2
 
 require (
+	github.com/aws/aws-lambda-go v1.47.0
 	github.com/coreos/go-oidc/v3 v3.11.0
 	golang.org/x/crypto v0.31.0
 	gopkg.in/yaml.v3 v3.0.1

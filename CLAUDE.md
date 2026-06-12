@@ -30,24 +30,26 @@ Core flow: client generates an ephemeral SSH key → sends only the public key w
 - **`aws_session_name` must never be usable for authorization** (`match.aws.session_name` is a parse error); it may appear only in `key_id_template` for auditing.
 - **Signing is abstracted behind a `Signer` interface** (in-memory `x/crypto/ssh` in MVP; KMS later via `crypto.Signer` + `ssh.NewSignerFromSigner`).
 
-## Planned Architecture
+## Architecture
 
-Single static binary with subcommands: `serve`, `check-config`, `explain`, `print-ca-pub`, `sshd-config-example`.
+Single static binary with subcommands: `serve`, `lambda`, `check-config`, `explain`, `print-ca-pub` (spec also plans `sshd-config-example`).
 
 ```
-cmd/oidc-ssh-ca/   # main
-internal/policy/   # YAML parse / validate / rule matching
-internal/issuer/   # Signer abstraction + x/crypto/ssh implementation
+cmd/oidc-ssh-ca/   # main + one file per subcommand
+internal/policy/   # YAML parse / validate / rule matching / key_id expansion
+internal/issuer/   # Signer abstraction + x/crypto/ssh implementation, CA key loading
 internal/oidc/     # JWT verification, JWKS cache
-internal/server/   # HTTP handlers (/sign)
+internal/server/   # transport-agnostic Sign() pipeline + net/http transport
+internal/lambda/   # AWS Lambda Function URL transport over server.Sign()
 internal/audit/    # slog-based audit logging
-docs/              # design, policy, sshd, security, aws-lambda
 examples/          # github-actions, policy, sshd, systemd
-terraform/         # AWS Lambda deployment modules (Phase 3)
-ansible/           # oidc_ssh_ca_trust role for target servers (Phase 2)
+terraform/         # AWS deployment modules (planned, Phase 3)
+ansible/           # oidc_ssh_ca_trust role for target servers (planned, Phase 2)
 ```
 
-Deployment targets: binary + systemd (primary), Docker distroless (convenience), AWS Lambda zip on `provided.al2023` (Phase 3 — no container image).
+The signing pipeline (validate body/key → verify JWT → match policy → expand key ID → sign) lives in `server.(*Server).Sign()`, which is transport-agnostic and performs all audit logging. Transports (the net/http handler, the Lambda Function URL handler) only move bytes — add any new entry point the same way so the generic-error and audit guarantees stay in one place. In Lambda the binary is deployed as `bootstrap` (`provided.al2023`); `main()` auto-selects lambda mode when `AWS_LAMBDA_RUNTIME_API` is set. There is no policy reload in Lambda — the policy loads at cold start from the zip (`OIDC_SSH_CA_CONFIG`, default `policy.yaml`).
+
+Deployment targets: binary + systemd (primary), AWS Lambda zip on `provided.al2023` (no container image needed), Docker distroless (convenience, planned).
 
 ## Build/Test Commands
 
