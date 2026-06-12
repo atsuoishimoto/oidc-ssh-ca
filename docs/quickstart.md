@@ -48,8 +48,35 @@ rules:
       key_id_template: "gha:${repository}:${run_id}:${run_attempt}"
 ```
 
-See the [policy reference](policy.md) for every field and the matching
-semantics. Validate it:
+See the [policy reference](policy.md) for every field. What this policy
+says:
+
+- **`defaults`** — certificates are backdated 30 seconds
+  (`valid_after_offset_seconds`) to tolerate clock skew on target servers,
+  no rule may issue a certificate living longer than 900 seconds
+  (`max_valid_for_seconds`), and only `ssh-ed25519` client keys are
+  accepted. No `extensions` block means every extension is off: the
+  certificate authenticates and nothing more (no PTY, no port forwarding
+  — plain `ssh host 'command'`, rsync, and scp still work).
+- **`match.jwt`** — the caller must present a token issued by GitHub
+  Actions (`issuer`) for this CA's audience (`ssh-ca-prod`, the value the
+  workflow requests with `&audience=...`). On top of that, all five
+  `claims_exact` entries must match: the run is in `your-org/your-repo`,
+  on branch `main`, triggered by a `push` (not a pull request), in a job
+  that declares `environment: production`, executing exactly the
+  `deploy.yml` workflow on `main` (`job_workflow_ref` — this pins the
+  workflow *file*, so another workflow in the same repository cannot
+  obtain this certificate). A claim that is absent from the token never
+  matches, and a request matching zero rules — or more than one — is
+  denied.
+- **`certificate`** — the issued certificate carries the single principal
+  `gha-prod-deploy` (which target servers map to a login user in step 4),
+  lives for 600 seconds, and gets a key ID like
+  `gha:your-org/your-repo:9000000000:1` built from verified claims — the
+  string you will see in both the CA audit log and the target server's
+  sshd log, tying the login to the exact run.
+
+Validate it:
 
 ```bash
 oidc-ssh-ca check-config policy.yaml
