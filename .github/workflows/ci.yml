@@ -25,7 +25,10 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: go test -race ./...
+        run: go test -short -race ./...
+
+      - name: End-to-end tests
+        run: go test -race -v ./e2e
 
       - name: Check formatting
         run: |
