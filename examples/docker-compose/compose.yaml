@@ -1,0 +1,38 @@
+# Self-hosted deployment: oidc-ssh-ca behind Caddy (automatic HTTPS).
+#
+# Place in this directory:
+#   policy.yaml   your issuance policy
+#   ca_key        the CA private key — must be readable by the container:
+#                 sudo chown 65532:65532 ca_key && sudo chmod 0600 ca_key
+#                 (65532 is the "nonroot" user of the distroless image)
+#   Caddyfile     with your domain (see Caddyfile in this directory)
+#
+# Start:          docker compose up -d
+# Reload policy:  docker compose kill -s HUP oidc-ssh-ca
+#                 (the image has no shell; signal it from the host)
+
+services:
+  oidc-ssh-ca:
+    build: ../..
+    command: ["serve", "--config", "/etc/oidc-ssh-ca/policy.yaml"]
+    environment:
+      OIDC_SSH_CA_KEY_FILE: /etc/oidc-ssh-ca/ca_key
+    volumes:
+      - ./policy.yaml:/etc/oidc-ssh-ca/policy.yaml:ro
+      - ./ca_key:/etc/oidc-ssh-ca/ca_key:ro
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

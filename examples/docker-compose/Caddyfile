@@ -1,0 +1,5 @@
+# Replace with your domain. Caddy obtains and renews the Let's Encrypt
+# certificate automatically; ports 80 and 443 must be reachable.
+ca.example.com {
+	reverse_proxy oidc-ssh-ca:8080
+}
