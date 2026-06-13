@@ -1,0 +1,183 @@
+# End-to-end self-test that runs entirely inside one GitHub Actions
+# runner. It exercises the real flow with a genuine GitHub Actions OIDC
+# token:
+#
+#   ephemeral key -> real OIDC token -> POST /sign -> short-lived cert
+#   -> ssh into a host that trusts only the CA public key.
+#
+# Both the CA server and the target sshd run on 127.0.0.1 inside the
+# runner, so nothing is exposed to the public internet. This is the
+# cheapest way to verify JWT verification, policy matching, key ID
+# expansion, certificate issuance, and TrustedUserCAKeys login together.
+#
+# Run it from the Actions tab (workflow_dispatch). The job fails if any
+# step fails, including the final ssh login.
+
+name: E2E self-test (in-runner)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # required to request a GitHub Actions OIDC token
+  contents: read
+
+env:
+  AUDIENCE: ssh-ca-selftest
+  PRINCIPAL: gha-selftest
+  CA_PORT: "8080"
+  SSHD_PORT: "2222"
+  DEPLOY_USER: deploy
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build the binary
+        run: go build -o oidc-ssh-ca ./cmd/oidc-ssh-ca
+
+      - name: Generate the CA key (ed25519, 0600)
+        run: ssh-keygen -t ed25519 -f ca_key -N "" -C oidc-ssh-ca-selftest
+
+      - name: Write the test policy
+        run: |
+          # ${repository}/${run_id}/${run_attempt} are key_id_template
+          # placeholders expanded by the CA, so the heredoc is quoted to
+          # keep the shell from touching them. github.repository is
+          # substituted by Actions before the script runs.
+          cat > policy.yaml <<'EOF'
+          version: 1
+          disabled: false
+
+          defaults:
+            valid_after_offset_seconds: -30
+            max_valid_for_seconds: 900
+            allowed_public_key_types:
+              - "ssh-ed25519"
+            extensions:
+              permit_pty: false
+              permit_port_forwarding: false
+              permit_agent_forwarding: false
+              permit_x11_forwarding: false
+              permit_user_rc: false
+
+          rules:
+            - name: "in-runner-selftest"
+              enabled: true
+              match:
+                jwt:
+                  issuer: "https://token.actions.githubusercontent.com"
+                  audience: "ssh-ca-selftest"
+                  claims_exact:
+                    repository: "__REPO__"
+              certificate:
+                principals:
+                  - "gha-selftest"
+                valid_for_seconds: 300
+                key_id_template: "gha:${repository}:${run_id}:${run_attempt}"
+          EOF
+          # Inject the real repository slug without risking heredoc
+          # expansion of the placeholder claims above.
+          sed -i "s|__REPO__|${{ github.repository }}|" policy.yaml
+          ./oidc-ssh-ca check-config policy.yaml
+          echo "----- policy.yaml -----"
+          cat policy.yaml
+
+      - name: Start the CA server on 127.0.0.1
+        run: |
+          ./oidc-ssh-ca serve \
+            --config policy.yaml \
+            --ca-key-file ca_key \
+            --listen "127.0.0.1:${CA_PORT}" &
+          echo $! > ca.pid
+          # Wait until the server answers (any HTTP response = listening).
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null "http://127.0.0.1:${CA_PORT}/sign"; then
+              echo "CA server is up"; exit 0
+            fi
+            sleep 0.5
+          done
+          echo "CA server did not come up"; exit 1
+
+      - name: Set up a target sshd that trusts only the CA
+        run: |
+          sudo useradd -m -s /bin/bash "${DEPLOY_USER}"
+
+          # CA public key as the trusted user CA.
+          ./oidc-ssh-ca print-ca-pub --ca-key-file ca_key \
+            | sudo tee /etc/ssh/oidc-ssh-ca-selftest.pub >/dev/null
+
+          # Map the certificate principal to the deploy user.
+          sudo mkdir -p /etc/ssh/auth_principals
+          echo "${PRINCIPAL}" \
+            | sudo tee "/etc/ssh/auth_principals/${DEPLOY_USER}" >/dev/null
+
+          # Dedicated sshd instance on 127.0.0.1:2222, isolated from any
+          # sshd the runner already runs.
+          ssh-keygen -t ed25519 -f "${PWD}/ssh_host_ed25519_key" -N ""
+          cat > "${PWD}/sshd_selftest_config" <<EOF
+          Port ${SSHD_PORT}
+          ListenAddress 127.0.0.1
+          HostKey ${PWD}/ssh_host_ed25519_key
+          PidFile ${PWD}/sshd_selftest.pid
+          TrustedUserCAKeys /etc/ssh/oidc-ssh-ca-selftest.pub
+          AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u
+          PubkeyAuthentication yes
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          UsePAM no
+          LogLevel VERBOSE
+          EOF
+
+          # sshd usually lives in /usr/sbin, which may be off PATH.
+          SSHD_BIN="$(command -v sshd || echo /usr/sbin/sshd)"
+          sudo "${SSHD_BIN}" -t -f "${PWD}/sshd_selftest_config"
+          sudo "${SSHD_BIN}" -f "${PWD}/sshd_selftest_config"
+
+      - name: Request a certificate with a real OIDC token
+        run: |
+          ssh-keygen -t ed25519 -f client_key -N "" -C selftest-client
+
+          # Real GitHub Actions OIDC token for our audience.
+          curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=${AUDIENCE}" \
+            | jq -r .value > oidc.jwt
+
+          jq -n --arg public_key "$(cat client_key.pub)" \
+            '{ public_key: $public_key }' > request.json
+
+          curl -sS --fail "http://127.0.0.1:${CA_PORT}/sign" \
+            -H "Authorization: Bearer $(cat oidc.jwt)" \
+            -H "Content-Type: application/json" \
+            --data @request.json \
+            -o client_key-cert.pub
+
+          echo "----- issued certificate -----"
+          ssh-keygen -L -f client_key-cert.pub
+
+      - name: Log in with the certificate
+        run: |
+          OUTPUT=$(ssh \
+            -i client_key \
+            -o CertificateFile=client_key-cert.pub \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -p "${SSHD_PORT}" \
+            "${DEPLOY_USER}@127.0.0.1" \
+            'echo OK logged in as $(whoami)@$(hostname); id')
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "OK logged in as ${DEPLOY_USER}@"
+
+      - name: Stop the CA server
+        if: always()
+        run: |
+          [ -f ca.pid ] && kill "$(cat ca.pid)" || true
+          [ -f sshd_selftest.pid ] && sudo kill "$(cat sshd_selftest.pid)" || true
