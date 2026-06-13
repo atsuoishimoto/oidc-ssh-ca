@@ -7,7 +7,9 @@ import (
 	"os"
 )
 
-var version = "dev" // set by GoReleaser
+// version is the released version baked into the binary; GoReleaser
+// overrides it at build time via -ldflags.
+var version = "0.1.0"
 
 func main() {
 	// On provided.al2023 the binary is deployed as "bootstrap" and
@@ -36,7 +38,7 @@ func main() {
 		err = cmdExplain(os.Args[2:])
 	case "print-ca-pub":
 		err = cmdPrintCAPub(os.Args[2:])
-	case "version", "--version":
+	case "version", "--version", "-v", "-V":
 		fmt.Println("oidc-ssh-ca", version)
 	case "help", "--help", "-h":
 		usage()
@@ -60,7 +62,7 @@ Usage:
   oidc-ssh-ca check-config policy.yaml
   oidc-ssh-ca explain --policy policy.yaml --claims claims.json
   oidc-ssh-ca print-ca-pub [--ca-key-file PATH]
-  oidc-ssh-ca version
+  oidc-ssh-ca version            (also: --version, -v)
 
 When started without arguments inside AWS Lambda (provided.al2023, the
 binary deployed as "bootstrap"), lambda mode is selected automatically.
