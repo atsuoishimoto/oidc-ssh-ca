@@ -64,14 +64,12 @@ aws lambda create-function \
   --timeout 10 \
   --memory-size 128 \
   --environment "$(jq -n --rawfile key ca_key '{Variables: {OIDC_SSH_CA_KEY: $key}}')"
-```
 
-No reserved concurrency is needed to bound cost: each `/sign` invocation is
-tiny (128 MB, milliseconds) and OIDC verification rejects unauthorized callers
-fast, so the function scales on the account's default concurrency pool. The
-CloudWatch invocation alarm below is enough to notice abuse of the public URL.
-(`reserved-concurrent-executions 0` is still the fastest emergency stop — see
-[Operations](#operations).)
+# Cap the function at a single instance.
+aws lambda put-function-concurrency \
+  --function-name oidc-ssh-ca \
+  --reserved-concurrent-executions 1
+```
 
 ## 4. Create the Function URL
 

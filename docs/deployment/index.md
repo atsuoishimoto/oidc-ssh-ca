@@ -25,9 +25,9 @@ Whatever the platform, the security model is the same:
   `0600` file (Compose, systemd), or — later — a KMS key that never leaves
   the HSM.
 - The `/sign` endpoint can be public: callers are authenticated by verifying
-  their OIDC token against the policy, not by network position. On Cloud Run,
-  `--max-instances 1` caps the cost of unauthenticated traffic; on Lambda each
-  invocation is cheap and short, so a CloudWatch alarm on invocation count is
-  enough to notice abuse.
+  their OIDC token against the policy, not by network position. Still, cap the
+  service to a single instance (`--max-instances 1` on Cloud Run,
+  `reserved_concurrent_executions = 1` on Lambda) to bound the cost of
+  unauthenticated traffic.
 - Audit logs are JSON lines on stdout. Every platform below captures them
   (CloudWatch Logs, Cloud Logging, `docker logs`, journald).
