@@ -125,8 +125,10 @@ A certificate logs in as user `deploy` only if one of its principals
 appears in that user's `AuthorizedPrincipalsFile` — the principal list in
 the policy and these files together decide who may go where.
 
-To apply this to many servers, the bundled Ansible role automates the
-whole step — see
+[Configuring target servers](target-servers.md) walks through this in
+detail, including validating with `sshd -t` and testing the login; to
+apply it across many servers the bundled Ansible role automates the whole
+step — see
 [Configuring target servers with Ansible](ansible.md).
 
 ## 5. Use it from GitHub Actions

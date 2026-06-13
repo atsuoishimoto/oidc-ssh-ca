@@ -2,9 +2,10 @@
 
 The `oidc_ssh_ca_trust` role, in
 [`ansible/roles/oidc_ssh_ca_trust`](https://github.com/atsuoishimoto/oidc-ssh-ca/tree/main/ansible/roles/oidc_ssh_ca_trust),
-automates step 4 of the [quickstart](quickstart.md): making target
-servers trust the CA. It touches only the SSH server side — it does not
-deploy or configure `oidc-ssh-ca` itself (for that, see
+automates the manual setup in
+[Configuring target servers](target-servers.md): making target servers
+trust the CA. It touches only the SSH server side — it does not deploy or
+configure `oidc-ssh-ca` itself (for that, see
 [Choosing a deployment](deployment/index.md)).
 
 On each host the role:
