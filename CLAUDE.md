@@ -16,6 +16,8 @@ The MVP (serve / check-config / explain / print-ca-pub, GitHub Actions OIDC only
 
 Core flow: client generates an ephemeral SSH key → sends only the public key with an OIDC JWT to `POST /sign` → server validates the JWT, matches it against `policy.yaml` rules, and returns a signed short-lived certificate. Target servers trust only the CA public key (`TrustedUserCAKeys` + `AuthorizedPrincipalsFile`).
 
+Positioning/audience wording lives in four places that must stay in sync: this file, `README.md`, `docs/index.md`, and `.memo/memo.md`. The agreed framing is "replacing long-lived SSH keys in GitHub Actions with short-lived, OIDC-issued certificates," aimed at reasonably mature teams/engineers who already run an OIDC provider — not "individuals and small teams." Do not reintroduce the small-team/small-scale framing.
+
 ## Non-Negotiable Design Invariants (from the spec)
 
 - **No subprocess, no temp files, no external SSH tools.** All key parsing/signing uses `golang.org/x/crypto/ssh` in memory. The CA private key never touches disk; raw PEM bytes are not retained after parsing.
