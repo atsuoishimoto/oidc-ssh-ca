@@ -170,7 +170,7 @@ func writeTestCAKey(t *testing.T, perm os.FileMode) string {
 func TestLoadCAKey(t *testing.T) {
 	t.Run("flag source", func(t *testing.T) {
 		path := writeTestCAKey(t, 0o600)
-		s, err := LoadCAKey(path)
+		s, err := LoadCAKey(path, false)
 		if err != nil {
 			t.Fatalf("LoadCAKey: %v", err)
 		}
@@ -180,7 +180,7 @@ func TestLoadCAKey(t *testing.T) {
 	})
 
 	t.Run("no source", func(t *testing.T) {
-		if _, err := LoadCAKey(""); err == nil || !strings.Contains(err.Error(), "not configured") {
+		if _, err := LoadCAKey("", false); err == nil || !strings.Contains(err.Error(), "not configured") {
 			t.Fatalf("expected not-configured error, got %v", err)
 		}
 	})
@@ -188,15 +188,24 @@ func TestLoadCAKey(t *testing.T) {
 	t.Run("multiple sources", func(t *testing.T) {
 		path := writeTestCAKey(t, 0o600)
 		t.Setenv(EnvKeyFile, path)
-		if _, err := LoadCAKey(path); err == nil || !strings.Contains(err.Error(), "multiple sources") {
+		if _, err := LoadCAKey(path, false); err == nil || !strings.Contains(err.Error(), "multiple sources") {
 			t.Fatalf("expected multiple-sources error, got %v", err)
 		}
 	})
 
 	t.Run("loose permissions", func(t *testing.T) {
 		path := writeTestCAKey(t, 0o644)
-		if _, err := LoadCAKey(path); err == nil || !strings.Contains(err.Error(), "permissions") {
+		if _, err := LoadCAKey(path, false); err == nil || !strings.Contains(err.Error(), "permissions") {
 			t.Fatalf("expected permissions error, got %v", err)
+		}
+	})
+
+	t.Run("loose permissions allowed when skip set", func(t *testing.T) {
+		// Mirrors a systemd LoadCredential file (mode 0440): the perm
+		// check must be bypassable, but only via the explicit flag.
+		path := writeTestCAKey(t, 0o440)
+		if _, err := LoadCAKey(path, true); err != nil {
+			t.Fatalf("LoadCAKey with skip set rejected 0440: %v", err)
 		}
 	})
 
@@ -207,14 +216,14 @@ func TestLoadCAKey(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Setenv(EnvKey, string(data))
-		if _, err := LoadCAKey(""); err != nil {
+		if _, err := LoadCAKey("", false); err != nil {
 			t.Fatalf("LoadCAKey from env: %v", err)
 		}
 	})
 
 	t.Run("garbage key", func(t *testing.T) {
 		t.Setenv(EnvKey, "not a key")
-		if _, err := LoadCAKey(""); err == nil {
+		if _, err := LoadCAKey("", false); err == nil {
 			t.Fatal("expected parse error")
 		}
 	})

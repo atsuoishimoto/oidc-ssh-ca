@@ -57,3 +57,9 @@ func (l *Logger) Error(msg string, attrs ...any) {
 func (l *Logger) Info(msg string, attrs ...any) {
 	l.log.Info(msg, attrs...)
 }
+
+// Warn records an operational condition that is allowed but weakens a
+// default safeguard (e.g. a permission check disabled by an operator).
+func (l *Logger) Warn(msg string, attrs ...any) {
+	l.log.Warn(msg, attrs...)
+}

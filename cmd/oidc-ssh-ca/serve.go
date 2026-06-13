@@ -23,6 +23,8 @@ func cmdServe(args []string) error {
 	configPath := fs.String("config", "", "path to policy.yaml (required)")
 	listen := fs.String("listen", ":8080", "listen address")
 	caKeyFile := fs.String("ca-key-file", "", "path to the CA private key")
+	skipKeyPermCheck := fs.Bool("skip-key-permission-check", false,
+		"do not refuse a CA key file readable by group/other; use only when the OS already isolates the file (e.g. a systemd LoadCredential file under /run/credentials)")
 	fs.Parse(args)
 	if *configPath == "" {
 		return errors.New("serve: --config is required")
@@ -34,12 +36,15 @@ func cmdServe(args []string) error {
 	if err != nil {
 		return err
 	}
-	signer, err := issuer.LoadCAKey(*caKeyFile)
+	signer, err := issuer.LoadCAKey(*caKeyFile, *skipKeyPermCheck)
 	if err != nil {
 		return err
 	}
 
 	log := audit.New()
+	if *skipKeyPermCheck {
+		log.Warn("CA key file permission check disabled (--skip-key-permission-check)")
+	}
 	srv := server.New(pol, signer, oidc.NewRemoteVerifier(), log)
 
 	// Only the public key fingerprint is logged, never key material.

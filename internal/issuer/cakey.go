@@ -20,7 +20,15 @@ const (
 // Lambda where no file can be mounted). Zero or multiple sources is an
 // error — there is no implicit precedence. The raw key bytes are not
 // retained after parsing.
-func LoadCAKey(flagPath string) (Signer, error) {
+//
+// skipPermCheck disables the file-permission guard (see readKeyFile). It
+// exists only for callers that pass the key through a path the operating
+// system already protects but that does not carry 0600 bits — notably a
+// systemd LoadCredential file under /run/credentials, which systemd
+// mounts read-only into the service's private namespace but exposes as
+// mode 0440. It is wired to an explicit, documented
+// --skip-key-permission-check flag; the default keeps the strict check.
+func LoadCAKey(flagPath string, skipPermCheck bool) (Signer, error) {
 	type source struct {
 		name string
 		load func() ([]byte, error)
@@ -29,12 +37,12 @@ func LoadCAKey(flagPath string) (Signer, error) {
 
 	if flagPath != "" {
 		sources = append(sources, source{"--ca-key-file", func() ([]byte, error) {
-			return readKeyFile(flagPath)
+			return readKeyFile(flagPath, skipPermCheck)
 		}})
 	}
 	if p := os.Getenv(EnvKeyFile); p != "" {
 		sources = append(sources, source{EnvKeyFile, func() ([]byte, error) {
-			return readKeyFile(p)
+			return readKeyFile(p, skipPermCheck)
 		}})
 	}
 	if v := os.Getenv(EnvKey); v != "" {
@@ -71,8 +79,9 @@ func LoadCAKey(flagPath string) (Signer, error) {
 }
 
 // readKeyFile reads a key file, refusing files readable by group or
-// other (must be 0600 or stricter).
-func readKeyFile(path string) ([]byte, error) {
+// other (must be 0600 or stricter) unless skipPermCheck is set. The
+// regular-file check always runs.
+func readKeyFile(path string, skipPermCheck bool) ([]byte, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("CA key file: %w", err)
@@ -80,7 +89,7 @@ func readKeyFile(path string) ([]byte, error) {
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("CA key file %s is not a regular file", path)
 	}
-	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+	if perm := info.Mode().Perm(); !skipPermCheck && perm&0o077 != 0 {
 		return nil, fmt.Errorf("CA key file %s has permissions %04o: must not be accessible by group/other (chmod 0600)", path, perm)
 	}
 	data, err := os.ReadFile(path)
