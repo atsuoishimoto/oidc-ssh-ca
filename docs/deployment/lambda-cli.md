@@ -65,10 +65,10 @@ aws lambda create-function \
   --memory-size 128 \
   --environment "$(jq -n --rawfile key ca_key '{Variables: {OIDC_SSH_CA_KEY: $key}}')"
 
-# Bound the cost of an unauthenticated endpoint.
+# Cap the function at a single instance.
 aws lambda put-function-concurrency \
   --function-name oidc-ssh-ca \
-  --reserved-concurrent-executions 5
+  --reserved-concurrent-executions 1
 ```
 
 ## 4. Create the Function URL
