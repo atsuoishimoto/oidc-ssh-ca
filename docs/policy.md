@@ -174,6 +174,61 @@ Which claims exist depends on the issuer. Useful GitHub Actions claims:
 `sub`, `run_id`, and `run_attempt` also exist; `run_id`/`run_attempt`
 change on every run, so they belong in `key_id_template`, not here.
 
+#### Pinning the branch
+
+Pin the git ref a run is allowed to come from with the `ref` claim. It is
+the full ref, not a short name:
+
+```yaml
+claims_exact:
+  ref: "refs/heads/main"        # the main branch
+  # ref: "refs/tags/v1.2.3"     # a specific tag
+  # ref: "refs/heads/release/*" is NOT supported — values are exact, no globs
+```
+
+`ref` is matched by exact string equality, so `main`, `refs/head/main`, or
+a glob will never match. To restrict to release tags in general (rather
+than one exact tag), pin `event_name: "push"` together with a tag-only
+trigger in the workflow, or use `job_workflow_ref` below.
+
+#### Pinning the workflow file
+
+Prefer `job_workflow_ref` over `workflow`. `workflow` is the workflow's
+display name (its `name:`), which silently breaks the moment the workflow
+is renamed; `job_workflow_ref` pins the workflow **file** and its ref:
+
+```yaml
+claims_exact:
+  job_workflow_ref: "your-org/your-repo/.github/workflows/deploy.yml@refs/heads/main"
+```
+
+The value is `owner/repo/path/to/workflow.yml@ref`. Because it ends with
+`@<ref>`, it pins the branch (or tag) as well — so a rule that sets
+`job_workflow_ref` usually does not also need `ref`. Notes:
+
+- The `@<ref>` is the ref the *workflow file* is read from. For a `push`
+  or `workflow_dispatch` run this equals the run's own ref (e.g.
+  `@refs/heads/main`); pinning a different branch denies.
+- With **reusable workflows**, `job_workflow_ref` is the *called*
+  workflow's file and ref — pin the reusable workflow that actually does
+  the signing request, not the caller.
+- The value is matched exactly, including the `.github/workflows/` path
+  and the `@<ref>` suffix. No globs.
+
+A rule combining both — only `deploy.yml`, only on `main`, only on a real
+push:
+
+```yaml
+match:
+  jwt:
+    issuer: "https://token.actions.githubusercontent.com"
+    audience: "ssh-ca-prod"
+    claims_exact:
+      repository: "your-org/your-repo"
+      event_name: "push"
+      job_workflow_ref: "your-org/your-repo/.github/workflows/deploy.yml@refs/heads/main"
+```
+
 ### `certificate`
 
 Required. What is issued when this rule is the single match.
