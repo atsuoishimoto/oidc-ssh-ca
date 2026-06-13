@@ -68,6 +68,7 @@ deployment/systemd
 :maxdepth: 2
 :caption: Target servers
 
+target-servers
 ansible
 ```
 
