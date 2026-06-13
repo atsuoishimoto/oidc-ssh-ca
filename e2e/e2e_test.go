@@ -206,7 +206,7 @@ func TestE2EInProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signer, err := issuer.LoadCAKey(caKeyPath)
+	signer, err := issuer.LoadCAKey(caKeyPath, false)
 	if err != nil {
 		t.Fatal(err)
 	}

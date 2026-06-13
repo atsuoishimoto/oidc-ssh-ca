@@ -7,6 +7,13 @@
 #
 # The CA key is passed as a systemd credential: it is exposed only to
 # this service, under the path %d/ca_key.
+#
+# systemd exposes that credential file as mode 0440, which the default
+# CA-key permission check (0600 or stricter) rejects. The file lives in
+# the service's private /run/credentials mount and is unreachable by
+# other users regardless of those bits, so --skip-key-permission-check
+# disables the check for this path only. Without it the service fails to
+# start with "permissions 0440: must not be accessible by group/other".
 
 [Unit]
 Description=oidc-ssh-ca - short-lived SSH certificate issuer
@@ -14,7 +21,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/oidc-ssh-ca serve --config /etc/oidc-ssh-ca/policy.yaml --listen :8080
+ExecStart=/usr/local/bin/oidc-ssh-ca serve --config /etc/oidc-ssh-ca/policy.yaml --listen :8080 --skip-key-permission-check
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 

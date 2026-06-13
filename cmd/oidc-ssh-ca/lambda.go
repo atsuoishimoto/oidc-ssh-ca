@@ -44,7 +44,7 @@ func cmdLambda(args []string) error {
 	if err != nil {
 		return err
 	}
-	signer, err := issuer.LoadCAKey("")
+	signer, err := issuer.LoadCAKey("", false)
 	if err != nil {
 		return err
 	}

@@ -30,6 +30,14 @@ systemctl enable --now oidc-ssh-ca
 The key reaches the process via `LoadCredential` — it is exposed only to
 this service under `%d/ca_key`, not to other processes of the same user.
 
+systemd presents that credential file as mode `0440`, which the default
+CA-key permission check (`0600` or stricter) would reject, so the unit
+passes `--skip-key-permission-check`. The credential lives in the
+service's private `/run/credentials` mount and is unreachable by other
+users regardless of its mode bits; the flag disables the check for this
+path only. Omit it elsewhere — without the flag the server refuses to
+start on a CA key file readable by group or other.
+
 ## TLS
 
 The server speaks plain HTTP on `:8080`; put any reverse proxy in front for
