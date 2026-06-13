@@ -12,7 +12,7 @@ The MVP (serve / check-config / explain / print-ca-pub, GitHub Actions OIDC only
 
 ## What This Project Is
 
-`oidc-ssh-ca` is a lightweight SSH Certificate Authority written in **Go** that issues short-lived OpenSSH user certificates to identities authenticated via OIDC/JWT (primarily GitHub Actions OIDC) or AWS IAM. It targets individuals and small teams who want to stop storing long-term SSH private keys in GitHub Secrets. It is deliberately small — not a replacement for Vault/Teleport.
+`oidc-ssh-ca` is a lightweight SSH Certificate Authority written in **Go** that issues short-lived OpenSSH user certificates to identities authenticated via OIDC/JWT (primarily GitHub Actions OIDC) or AWS IAM. It targets reasonably mature teams and engineers who already run an OIDC identity provider and want to stop storing long-term SSH private keys in GitHub Secrets. It is deliberately small — not a replacement for Vault/Teleport.
 
 Core flow: client generates an ephemeral SSH key → sends only the public key with an OIDC JWT to `POST /sign` → server validates the JWT, matches it against `policy.yaml` rules, and returns a signed short-lived certificate. Target servers trust only the CA public key (`TrustedUserCAKeys` + `AuthorizedPrincipalsFile`).
 
