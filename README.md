@@ -26,21 +26,6 @@ This is not a replacement for Vault, OpenBao, or Teleport. It is a small,
 single-binary tool that replaces long-lived SSH keys in GitHub Actions with
 short-lived, OIDC-issued certificates.
 
-## Design guarantees
-
-- **No subprocesses, no temporary files, no external SSH tools.** All key
-  parsing and certificate signing happens in memory via
-  `golang.org/x/crypto/ssh`. The CA private key is never written to disk.
-- **The policy decides everything.** Principals, TTL, extensions, and the
-  certificate key ID are derived from verified JWT claims and `policy.yaml`.
-  The request body carries only the public key — a caller cannot request a
-  principal or a longer TTL.
-- **Deny by default, exactly one match.** A request is allowed only if
-  exactly one enabled rule matches; zero or multiple matches deny.
-- **Fail safe.** An invalid policy prevents startup; a failed reload keeps
-  the previous policy; a JWKS outage without cached keys denies.
-- **Generic errors.** Callers get a fixed message and a request ID. Denial
-  reasons go only to the audit log, so the policy cannot be probed.
 
 ## Building from source
 
