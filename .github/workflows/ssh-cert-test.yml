@@ -1,0 +1,71 @@
+# Manual test: request a short-lived SSH certificate from the deployed
+# Cloud Run instance of oidc-ssh-ca and verify what was issued.
+#
+#   ephemeral key -> real GitHub OIDC token -> POST /sign -> certificate
+#
+# Unlike e2e-selftest.yml (which runs the CA inside the runner), this hits
+# the live Cloud Run endpoint. There is no target server: the test only
+# proves issuance, by inspecting the returned certificate.
+#
+# Prerequisites:
+#   - This file must be on the default branch (main) so workflow_dispatch
+#     can run it; the CA policy pins job_workflow_ref to this file @ main.
+#   - The CA policy (gcloud-test/policy.yaml) rule must match the claims
+#     this workflow produces: audience ssh-ca-test, repository, ref,
+#     event_name=workflow_dispatch, job_workflow_ref.
+
+name: SSH cert test (Cloud Run)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # required to request a GitHub Actions OIDC token
+  contents: read
+
+env:
+  # Deployed Cloud Run service URL. Override by setting a repo variable
+  # OIDC_SSH_CA_URL; this default keeps the test runnable with no setup.
+  OIDC_SSH_CA_URL: ${{ vars.OIDC_SSH_CA_URL || 'https://oidc-ssh-ca-870123444741.asia-northeast1.run.app' }}
+  AUDIENCE: ssh-ca-test
+  EXPECT_PRINCIPAL: gha-test
+
+jobs:
+  request-cert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate ephemeral SSH key
+        run: ssh-keygen -t ed25519 -N "" -f gha_key -C ssh-cert-test
+
+      - name: Get GitHub OIDC token
+        run: |
+          curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=${AUDIENCE}" \
+            | jq -r .value > oidc.jwt
+          test -s oidc.jwt
+
+      - name: Request SSH certificate from Cloud Run
+        run: |
+          jq -n --arg public_key "$(cat gha_key.pub)" \
+            '{ public_key: $public_key }' > request.json
+
+          # --fail makes curl exit non-zero on a 4xx/5xx denial so the job
+          # fails loudly; the body then carries the generic error+request_id.
+          curl -sS --fail-with-body "${OIDC_SSH_CA_URL}/sign" \
+            -H "Authorization: Bearer $(cat oidc.jwt)" \
+            -H "Content-Type: application/json" \
+            --data @request.json \
+            -o gha_key-cert.pub
+
+      - name: Show and verify the issued certificate
+        run: |
+          echo "----- issued certificate -----"
+          ssh-keygen -L -f gha_key-cert.pub
+
+          # Assert it really is a certificate, carries the expected
+          # principal, and got a key ID built from this run's claims.
+          INFO=$(ssh-keygen -L -f gha_key-cert.pub)
+          echo "$INFO" | grep -q "Type: ssh-ed25519-cert-v01@openssh.com user certificate"
+          echo "$INFO" | grep -q "${EXPECT_PRINCIPAL}"
+          echo "$INFO" | grep -q "Key ID: \"gha:${{ github.repository }}:${{ github.run_id }}:${{ github.run_attempt }}\""
+          echo "certificate OK"
