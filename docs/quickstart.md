@@ -4,6 +4,25 @@ This walks through a complete setup: a CA key, a policy, a running server,
 a target server that trusts the CA, and a GitHub Actions workflow that
 connects with a short-lived certificate.
 
+## 0. Build the binary
+
+The steps below use the `oidc-ssh-ca` command, so build it first. It is a
+single static Go binary; the toolchain (1.22 or newer) is the only
+prerequisite:
+
+```bash
+go build -o oidc-ssh-ca ./cmd/oidc-ssh-ca
+```
+
+Or install it onto your `PATH`:
+
+```bash
+go install github.com/atsuoishimoto/oidc-ssh-ca/cmd/oidc-ssh-ca@latest
+```
+
+See [Building](building.md) for cross-compilation, version stamping, and
+the container image.
+
 ## 1. Generate the CA key
 
 ```bash

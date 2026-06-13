@@ -22,3 +22,12 @@ html_theme_options = {
     "collapse_navigation": False,
     "navigation_depth": 3,
 }
+
+# Show "Edit on GitHub" links on every page (sphinx_rtd_theme).
+html_context = {
+    "display_github": True,
+    "github_user": "atsuoishimoto",
+    "github_repo": "oidc-ssh-ca",
+    "github_version": "main",
+    "conf_py_path": "/docs/",
+}

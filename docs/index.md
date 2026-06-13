@@ -86,5 +86,6 @@ operations
 :maxdepth: 2
 :caption: Development
 
+building
 testing
 ```

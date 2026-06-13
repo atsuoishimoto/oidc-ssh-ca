@@ -42,6 +42,27 @@ OIDC-based SSH without operating a secrets platform.
 - **Generic errors.** Callers get a fixed message and a request ID. Denial
   reasons go only to the audit log, so the policy cannot be probed.
 
+## Building from source
+
+`oidc-ssh-ca` is a single static Go binary with no cgo and no runtime
+dependencies; building it needs only the Go toolchain (1.22 or newer):
+
+```bash
+go build -o oidc-ssh-ca ./cmd/oidc-ssh-ca   # build the binary
+go test ./...                                # run the tests
+```
+
+Or install it straight onto your `PATH`:
+
+```bash
+go install github.com/atsuoishimoto/oidc-ssh-ca/cmd/oidc-ssh-ca@latest
+```
+
+A multi-stage `Dockerfile` builds a distroless image (`docker build -t
+oidc-ssh-ca .`). See the
+[build guide](https://oidc-ssh-ca.readthedocs.io/en/latest/building.html)
+for cross-compilation, version stamping, and the container build.
+
 ## Documentation
 
 The full documentation is at
