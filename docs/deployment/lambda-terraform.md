@@ -79,9 +79,10 @@ resource "aws_lambda_function" "ca" {
   timeout     = 10
   memory_size = 128
 
-  # Bounds the cost of an unauthenticated endpoint.
-  # Emergency stop: set to 0 and apply.
-  reserved_concurrent_executions = 5
+  # No reserved concurrency: each /sign invocation is tiny and OIDC
+  # verification rejects unauthorized callers fast, so the function scales
+  # on the account's default concurrency pool. For an emergency stop, add
+  # reserved_concurrent_executions = 0 and apply (see Operations below).
 
   environment {
     variables = {
@@ -142,8 +143,9 @@ aws lambda put-function-concurrency \
   --reserved-concurrent-executions 0
 ```
 
-Afterwards set `reserved_concurrent_executions = 0` in `main.tf` so the next
-`terraform apply` does not silently re-enable issuance.
+Afterwards add `reserved_concurrent_executions = 0` to the
+`aws_lambda_function` resource so the next `terraform apply` does not silently
+re-enable issuance.
 
 **Tear down**:
 

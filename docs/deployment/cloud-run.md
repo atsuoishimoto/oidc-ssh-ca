@@ -60,14 +60,16 @@ gcloud run deploy oidc-ssh-ca \
   --service-account "oidc-ssh-ca@${PROJECT_ID}.iam.gserviceaccount.com" \
   --allow-unauthenticated \
   --set-secrets "OIDC_SSH_CA_KEY=oidc-ssh-ca-key:latest,/etc/oidc-ssh-ca/policy.yaml=oidc-ssh-ca-policy:latest" \
-  --max-instances 2
+  --max-instances 1
 ```
 
 Notes:
 
 - `--allow-unauthenticated` is intentional: `/sign` authenticates callers by
   verifying their OIDC token, the same model as running the server on any
-  public host. `--max-instances` bounds the cost of unauthenticated traffic.
+  public host. `--max-instances 1` bounds the cost of unauthenticated
+  traffic — a single instance serves up to 80 concurrent requests by default,
+  far more than this workload needs.
 - The server listens on `:8080` by default, which matches Cloud Run's default
   container port.
 - The command prints the service URL — that is the `OIDC_SSH_CA_URL` for the
