@@ -5,7 +5,7 @@
 
 `oidc-ssh-ca` は、OIDC / JWT / IAM などで認証された実行主体に対して、短命の OpenSSH user certificate を発行する軽量な SSH CA です。
 
-主な対象は、個人開発者、小規模チーム、小規模企業です。
+主な対象は、すでに OIDC identity provider を運用している、ある程度成熟したチームやエンジニアです。
 
 目的は、GitHub Actions などの CI/CD や簡易運用ワークフローから、長期 SSH 秘密鍵を GitHub Secrets などに置かずに、安全に SSH / Ansible / rsync / shell script を実行できるようにすることです。
 
@@ -33,13 +33,13 @@ single static binary として配布できる
 
 ## 2. 企画の一文
 
-`oidc-ssh-ca` は、GitHub Actions などの OIDC/JWT identity から短命 OpenSSH user certificate を発行する、小規模運用向けの軽量 SSH CA です。single static binary として動作し、GitHub Secrets に長期 SSH 秘密鍵を置かず、既存の `ssh` / Ansible / `rsync` / shell script をそのまま使えるようにします。
+`oidc-ssh-ca` は、GitHub Actions などの OIDC/JWT identity から短命 OpenSSH user certificate を発行する軽量 SSH CA です。GitHub Actions で長期 SSH 鍵を扱う運用を、短命の OIDC 発行証明書に置き換えます。single static binary として動作し、GitHub Secrets に長期 SSH 秘密鍵を置かず、既存の `ssh` / Ansible / `rsync` / shell script をそのまま使えるようにします。
 
 ---
 
 ## 3. 解決したい課題
 
-従来の小規模 SSH 運用では、次のような問題が起きがちです。
+従来の SSH 運用では、次のような問題が起きがちです。
 
 ```text
 GitHub Secrets に長期 SSH 秘密鍵を置く
