@@ -1,0 +1,77 @@
+---
+- name: Validate role variables
+  ansible.builtin.assert:
+    that:
+      - oidc_ssh_ca_public_key | trim | length > 0
+      - oidc_ssh_ca_public_key | trim is match('^ssh-ed25519 ')
+      - oidc_ssh_ca_users | length > 0
+    fail_msg: >-
+      oidc_ssh_ca_public_key must be an ssh-ed25519 public key
+      (oidc-ssh-ca print-ca-pub) and oidc_ssh_ca_users must list at
+      least one user.
+
+- name: Validate user entries
+  ansible.builtin.assert:
+    that:
+      - item.user is defined
+      - item.user | length > 0
+      - item.principals is defined
+      - item.principals | length > 0
+    fail_msg: >-
+      Each oidc_ssh_ca_users entry needs a non-empty "user" and at
+      least one principal.
+  loop: "{{ oidc_ssh_ca_users }}"
+  loop_control:
+    label: "{{ item.user | default('<missing user>') }}"
+
+- name: Check that sshd_config includes sshd_config.d
+  ansible.builtin.command:
+    argv:
+      - grep
+      - --extended-regexp
+      - --quiet
+      - '^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d'
+      - /etc/ssh/sshd_config
+  register: oidc_ssh_ca_include_check
+  changed_when: false
+  failed_when: oidc_ssh_ca_include_check.rc != 0
+  when: oidc_ssh_ca_verify_include
+
+- name: Install the CA public key
+  ansible.builtin.copy:
+    content: "{{ oidc_ssh_ca_public_key | trim }}\n"
+    dest: "{{ oidc_ssh_ca_public_key_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload sshd
+
+- name: Create the principals directory
+  ansible.builtin.file:
+    path: "{{ oidc_ssh_ca_principals_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install per-user principals files
+  ansible.builtin.template:
+    src: auth_principals.j2
+    dest: "{{ oidc_ssh_ca_principals_dir }}/{{ item.user }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ oidc_ssh_ca_users }}"
+  loop_control:
+    label: "{{ item.user }}"
+  notify: Reload sshd
+
+- name: Install the sshd configuration fragment
+  ansible.builtin.template:
+    src: oidc-ssh-ca.conf.j2
+    dest: "{{ oidc_ssh_ca_sshd_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "{{ oidc_ssh_ca_sshd_binary }} -t -f %s"
+  notify: Reload sshd

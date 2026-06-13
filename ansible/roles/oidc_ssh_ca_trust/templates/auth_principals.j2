@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# Certificate principals allowed to log in as "{{ item.user }}", one per
+# line. Must match certificate.principals in the CA's policy.yaml.
+{% for principal in item.principals %}
+{{ principal }}
+{% endfor %}

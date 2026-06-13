@@ -1,0 +1,37 @@
+---
+# The CA public key in OpenSSH format ("ssh-ed25519 AAAA... comment").
+# Export it with `oidc-ssh-ca print-ca-pub`. Required.
+oidc_ssh_ca_public_key: ""
+
+# Login users that accept certificates, and the certificate principals
+# allowed to log in as each of them. Required, must not be empty.
+#
+# oidc_ssh_ca_users:
+#   - user: deploy
+#     principals:
+#       - gha-prod-deploy
+oidc_ssh_ca_users: []
+
+# Where the CA public key is installed on the target server.
+oidc_ssh_ca_public_key_path: /etc/ssh/oidc-ssh-ca.pub
+
+# Directory holding one principals file per login user.
+oidc_ssh_ca_principals_dir: /etc/ssh/auth_principals
+
+# The sshd_config fragment the role manages.
+oidc_ssh_ca_sshd_config_path: /etc/ssh/sshd_config.d/oidc-ssh-ca.conf
+
+# Disable password and keyboard-interactive authentication for the
+# certificate users (inside their Match blocks only).
+oidc_ssh_ca_disable_password_auth: true
+
+# Fail if /etc/ssh/sshd_config does not include /etc/ssh/sshd_config.d.
+# Disable only if you include the fragment some other way.
+oidc_ssh_ca_verify_include: true
+
+# sshd binary used for `sshd -t` validation.
+oidc_ssh_ca_sshd_binary: /usr/sbin/sshd
+
+# Service name to reload ("ssh" on Debian/Ubuntu, "sshd" elsewhere).
+oidc_ssh_ca_sshd_service: >-
+  {{ 'ssh' if ansible_facts['os_family'] | default('') == 'Debian' else 'sshd' }}

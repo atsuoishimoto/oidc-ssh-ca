@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+# sshd configuration for oidc-ssh-ca certificates (oidc_ssh_ca_trust role).
+
+TrustedUserCAKeys {{ oidc_ssh_ca_public_key_path }}
+
+{% for entry in oidc_ssh_ca_users %}
+{% if not loop.first %}
+
+{% endif %}
+Match User {{ entry.user }}
+    AuthorizedPrincipalsFile {{ oidc_ssh_ca_principals_dir }}/%u
+{% if oidc_ssh_ca_disable_password_auth %}
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+{% endif %}
+{% endfor %}

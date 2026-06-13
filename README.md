@@ -78,9 +78,9 @@ make -C docs html    # docs/_build/html/index.html
 
 MVP plus native Lambda support. GitHub Actions OIDC (RS256) is the
 supported identity source; only `ssh-ed25519` keys are accepted for both
-the CA and client keys. AWS IAM identity matching, Terraform modules, and
-an Ansible role are planned — see `.memo/memo.md` for the full design
-document.
+the CA and client keys. An Ansible role for target servers is included
+([`ansible/`](ansible/)). AWS IAM identity matching and Terraform modules
+are planned — see `.memo/memo.md` for the full design document.
 
 ## License
 

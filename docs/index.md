@@ -66,6 +66,13 @@ deployment/systemd
 
 ```{toctree}
 :maxdepth: 2
+:caption: Target servers
+
+ansible
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: Reference
 
 policy
