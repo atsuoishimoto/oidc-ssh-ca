@@ -23,8 +23,8 @@ target servers (trust only the CA public key)
 ```
 
 This is not a replacement for Vault, OpenBao, or Teleport. It is a small,
-single-binary certificate issuer for individuals and small teams who want
-OIDC-based SSH without operating a secrets platform.
+single-binary tool that replaces long-lived SSH keys in GitHub Actions with
+short-lived, OIDC-issued certificates.
 
 ## Design guarantees
 
