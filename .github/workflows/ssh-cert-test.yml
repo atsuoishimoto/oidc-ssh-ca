@@ -18,19 +18,26 @@
 #     event_name=workflow_dispatch, job_workflow_ref.
 #   - dev.aish.dev trusts the CA and maps principal gha-test -> deploy.
 
-name: SSH cert test (Cloud Run)
+name: SSH cert test (Cloud Run / Lambda)
 
 on:
   workflow_dispatch:
+    inputs:
+      ca_url:
+        description: "CA endpoint URL, no trailing slash (blank = Cloud Run default)"
+        required: false
+        default: ""
 
 permissions:
   id-token: write   # required to request a GitHub Actions OIDC token
   contents: read
 
 env:
-  # Deployed Cloud Run service URL. Override by setting a repo variable
-  # OIDC_SSH_CA_URL; this default keeps the test runnable with no setup.
-  OIDC_SSH_CA_URL: ${{ vars.OIDC_SSH_CA_URL || 'https://oidc-ssh-ca-870123444741.asia-northeast1.run.app' }}
+  # CA endpoint: the workflow_dispatch input wins (e.g. the Lambda Function
+  # URL), then a repo variable, then the Cloud Run default. Both the Cloud
+  # Run and Lambda deployments use the same CA key and policy, so either
+  # issues a certificate accepted by dev.aish.dev.
+  OIDC_SSH_CA_URL: ${{ inputs.ca_url || vars.OIDC_SSH_CA_URL || 'https://oidc-ssh-ca-870123444741.asia-northeast1.run.app' }}
   AUDIENCE: ssh-ca-test
   EXPECT_PRINCIPAL: gha-test
   # dev.aish.dev (AWS Lightsail Tokyo) is reachable from GitHub-hosted
@@ -52,8 +59,9 @@ jobs:
             | jq -r .value > oidc.jwt
           test -s oidc.jwt
 
-      - name: Request SSH certificate from Cloud Run
+      - name: Request SSH certificate from the CA
         run: |
+          echo "CA endpoint: ${OIDC_SSH_CA_URL}"
           jq -n --arg public_key "$(cat gha_key.pub)" \
             '{ public_key: $public_key }' > request.json
 
