@@ -38,3 +38,21 @@ jobs:
             echo "$out"
             exit 1
           fi
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Fail the build on known vulnerabilities in the module graph or in
+      # the standard library version we build against. This is a security
+      # tool issuing SSH certificates, so a vulnerable OIDC/JOSE/crypto
+      # dependency must block CI rather than ship.
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...

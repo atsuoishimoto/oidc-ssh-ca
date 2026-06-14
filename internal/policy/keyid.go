@@ -17,6 +17,13 @@ var (
 	// request: the Key ID appears verbatim in sshd logs, and audit
 	// values must not be silently rewritten.
 	keyIDValueRe = regexp.MustCompile(`^[A-Za-z0-9._/:@-]+$`)
+	// keyIDLiteralRe is the allowlist for the literal portions of a
+	// template (everything outside ${...}). It permits the empty string
+	// so a template made entirely of variables is accepted, but rejects
+	// newlines, control characters, and whitespace baked into the
+	// template itself. A malformed literal would otherwise survive into
+	// the Key ID even when every claim value is clean.
+	keyIDLiteralRe = regexp.MustCompile(`^[A-Za-z0-9._/:@-]*$`)
 )
 
 // templateVars extracts the variable names referenced by a
@@ -36,6 +43,14 @@ func templateVars(tmpl string) ([]string, error) {
 			return nil, fmt.Errorf("key_id_template: invalid claim name %q", name)
 		}
 		vars = append(vars, name)
+	}
+	// The literal text around the variables must itself stay within the
+	// Key ID allowlist. Expanded claim values are checked at issuance,
+	// but a template like "gha:${repo}\nspoofed: x" would otherwise inject
+	// newlines or control characters into sshd logs and the audit trail.
+	literals := templateVarRe.ReplaceAllString(tmpl, "")
+	if !keyIDLiteralRe.MatchString(literals) {
+		return nil, fmt.Errorf("key_id_template: literal text contains characters outside [A-Za-z0-9._/:@-]")
 	}
 	return vars, nil
 }
@@ -75,6 +90,13 @@ func ExpandKeyID(tmpl string, claims map[string]any) (string, error) {
 	}
 	if len(out) > MaxKeyIDLength {
 		return "", fmt.Errorf("key_id: expanded key ID exceeds %d bytes", MaxKeyIDLength)
+	}
+	// Defense in depth: re-check the fully expanded result. Each claim
+	// value and the template literals are validated independently above,
+	// so this can only fail on a logic error, but the Key ID reaches sshd
+	// logs verbatim and is not worth trusting to construction alone.
+	if !keyIDValueRe.MatchString(out) {
+		return "", fmt.Errorf("key_id: expanded key ID contains characters outside [A-Za-z0-9._/:@-]")
 	}
 	return out, nil
 }

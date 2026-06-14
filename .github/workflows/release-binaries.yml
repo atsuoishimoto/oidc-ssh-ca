@@ -18,7 +18,9 @@ on:
         required: true
 
 permissions:
-  contents: write   # required to upload assets to the release
+  contents: write       # required to upload assets to the release
+  id-token: write       # required for keyless signing of the provenance
+  attestations: write   # required to record the build provenance
 
 jobs:
   build:
@@ -75,6 +77,18 @@ jobs:
           (cd dist && sha256sum * > checksums.txt)
           echo "----- artifacts -----"
           ls -la dist
+
+      # Generate SLSA build provenance for every released archive. The
+      # attestation is signed keyless via Sigstore (using the id-token
+      # above) and recorded in the public transparency log, so consumers
+      # can verify a binary was built by this workflow from this repo with
+      #   gh attestation verify <artifact> --repo <owner>/<repo>
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
 
       - name: Upload artifacts to the release
         env:
