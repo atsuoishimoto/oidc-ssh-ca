@@ -26,6 +26,13 @@ This is not a replacement for Vault, OpenBao, or Teleport. It is a small,
 single-binary tool that replaces long-lived SSH keys in GitHub Actions with
 short-lived, OIDC-issued certificates.
 
+The value is not just fewer keys. For a team that deploys to production from
+GitHub Actions, it makes a workflow's identity the unit of SSH authorization:
+what each run may do is decided by verified OIDC claims against a reviewable
+`policy.yaml`, every issued certificate is logged for audit, and key rotation
+collapses onto the single CA key. See [Why teams adopt
+oidc-ssh-ca](why-teams.md) for the operational case.
+
 ## Workflow-scoped SSH permissions
 
 oidc-ssh-ca can issue SSH certificates with a forced command based on
