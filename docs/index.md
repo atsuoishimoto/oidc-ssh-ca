@@ -26,24 +26,22 @@ This is not a replacement for Vault, OpenBao, or Teleport. It is a small,
 single-binary tool that replaces long-lived SSH keys in GitHub Actions with
 short-lived, OIDC-issued certificates.
 
-## Design guarantees
+## Workflow-scoped SSH permissions
 
-- **No subprocesses, no temporary files, no external SSH tools.** All key
-  parsing and certificate signing happens in memory via
-  `golang.org/x/crypto/ssh`. The CA private key is never written to disk.
-- **The policy decides everything.** Principals, TTL, extensions, and the
-  certificate key ID are derived from verified JWT claims and `policy.yaml`.
-  The request body carries only the public key — a caller cannot request a
-  principal or a longer TTL.
-- **Deny by default, exactly one match.** A request is allowed only if
-  exactly one enabled rule matches. Zero matches deny; multiple matches deny
-  (no first-match-wins surprises). A claim referenced by a rule but absent
-  from the token denies.
-- **Fail safe.** An invalid policy prevents startup; a failed reload keeps
-  the previous policy; a JWKS outage without cached keys denies.
-- **Generic errors.** Callers get a fixed message and a request ID. Denial
-  reasons and details go only to the server's audit log, so the policy
-  cannot be probed by varying claims.
+oidc-ssh-ca can issue SSH certificates with a forced command based on
+GitHub Actions OIDC claims.
+
+This means a workflow does not need general-purpose SSH access.
+
+For example:
+
+- `deploy-prod.yml` can only run `/usr/local/bin/deploy-prod`
+- `restart-worker.yml` can only run `/usr/local/bin/restart-worker`
+- `collect-logs.yml` can only run `/usr/local/bin/collect-logs`
+
+Even if a certificate is leaked, it cannot be reused as a general SSH shell.
+It is short-lived and restricted to the command encoded in the certificate.
+
 
 ```{toctree}
 :maxdepth: 2
