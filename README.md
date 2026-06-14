@@ -27,6 +27,23 @@ single-binary tool that replaces long-lived SSH keys in GitHub Actions with
 short-lived, OIDC-issued certificates.
 
 
+## Workflow-scoped SSH permissions
+
+oidc-ssh-ca can issue SSH certificates with a forced command based on
+GitHub Actions OIDC claims.
+
+This means a workflow does not need general-purpose SSH access.
+
+For example:
+
+- `deploy-prod.yml` can only run `/usr/local/bin/deploy-prod`
+- `restart-worker.yml` can only run `/usr/local/bin/restart-worker`
+- `collect-logs.yml` can only run `/usr/local/bin/collect-logs`
+
+Even if a certificate is leaked, it cannot be reused as a general SSH shell.
+It is short-lived and restricted to the command encoded in the certificate.
+
+
 ## Building from source
 
 `oidc-ssh-ca` is a single static Go binary with no cgo and no runtime
