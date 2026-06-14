@@ -103,6 +103,20 @@ func TestParseErrors(t *testing.T) {
 		{"empty principals", func(s string) string {
 			return strings.Replace(s, `principals: ["gha-prod-deploy"]`, "principals: []", 1)
 		}, "principals"},
+		{"principal with space", func(s string) string {
+			return strings.Replace(s, `principals: ["gha-prod-deploy"]`, `principals: ["gha prod deploy"]`, 1)
+		}, "outside"},
+		{"principal with newline", func(s string) string {
+			return strings.Replace(s, `principals: ["gha-prod-deploy"]`, "principals: [\"gha\\nroot\"]", 1)
+		}, "outside"},
+		{"principal too long", func(s string) string {
+			long := strings.Repeat("a", 129)
+			return strings.Replace(s, `principals: ["gha-prod-deploy"]`, `principals: ["`+long+`"]`, 1)
+		}, "outside"},
+		{"key_id_template literal newline", func(s string) string {
+			return strings.Replace(s, `key_id_template: "gha:${repository}:${run_id}:${run_attempt}"`,
+				"key_id_template: \"gha:${repository}\\nx\"", 1)
+		}, "literal text"},
 		{"missing key_id_template", func(s string) string {
 			return strings.Replace(s, `key_id_template: "gha:${repository}:${run_id}:${run_attempt}"`, "", 1)
 		}, "key_id_template"},

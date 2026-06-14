@@ -68,3 +68,20 @@ func TestTemplateVars(t *testing.T) {
 		}
 	}
 }
+
+func TestTemplateVarsRejectsBadLiterals(t *testing.T) {
+	for _, bad := range []string{
+		"gha:${repository}\nspoofed:${run_id}", // newline in literal
+		"gha ${repository}",                    // space in literal
+		"gha:${repository}#frag",               // disallowed punctuation
+		"gha:${repository}\t",                  // tab
+	} {
+		if _, err := templateVars(bad); err == nil {
+			t.Errorf("templateVars(%q): expected literal error", bad)
+		}
+	}
+	// A template made entirely of variables has empty literals and is fine.
+	if _, err := templateVars("${repository}${run_id}"); err != nil {
+		t.Errorf("all-variable template should be valid: %v", err)
+	}
+}

@@ -800,6 +800,43 @@ exp / nbf / iat の検証に leeway 60 秒を許容する
 これとは独立に、サーバ側 sshd との時刻ずれ対策として適用する
 ```
 
+### 13.4 JWT リプレイについて (既知の制約 / 将来課題)
+
+現状の MVP は「1 JWT = 1 証明書」を保証しない。署名・issuer・aud・時刻・policy
+照合を通れば、同じ OIDC JWT を有効期限 (exp) 内に複数回 `POST /sign` に
+渡して、その都度 (異なる公開鍵で) 証明書を発行できる。
+
+```text
+攻撃シナリオ:
+  実行中の runner から OIDC JWT を窃取できた攻撃者は、その JWT の exp までの
+  間、攻撃者自身の ephemeral 公開鍵を送って証明書を発行できる。
+緩和:
+  - 証明書 TTL が短い (デフォルト分単位) ので、被害が成立する時間窓は狭い。
+  - GitHub OIDC JWT 自体の有効期限も短い。
+  - principal / extensions は policy 由来なので、攻撃者が権限を広げることは
+    できない (盗んだ JWT が一致する rule の範囲に限定される)。
+残るリスク:
+  上記の時間窓の中では、正規 runner と並行して攻撃者も証明書を取得できる。
+```
+
+将来の強化案 (MVP では未実装):
+
+```text
+jti ベースの一回限り消費 (replay 防止):
+  検証済み JWT の jti を「exp までの短時間」キャッシュし、二度目の jti を deny。
+  GitHub OIDC JWT は jti / exp / iat / nbf を標準 claim として持つ。
+状態の持ち方が運用形態で変わる:
+  - スタンドアローン単一インスタンス: メモリ LRU で十分。
+  - Lambda / 複数インスタンス: 共有ストア (DynamoDB / Redis / Memorystore 等)
+    が必要になり、可用性・レイテンシ・コストとのトレードオフが発生する。
+  - jti を持たない / 一意でない provider もあり得るため、policy で有効・無効を
+    切り替えられる設計が前提。
+```
+
+当面の対応方針: MVP では実装せず、README / Security model に「OIDC token は
+exp 内で replay 可能」である旨を明記する。あわせて、replay 調査を可能にするため
+監査ログに `jti`(取得できる場合) を含めることを検討する (section 14)。
+
 ---
 
 ## 14. 監査ログ
@@ -1467,6 +1504,7 @@ host certificate 発行 (@cert-authority による known_hosts 簡素化)
 KMS Signer (CA 鍵をプロセスに持たない構成)
 key rotation helper
 emergency disable の拡張 (API 経由の停止など)
+jti ベースの JWT replay 防止 (section 13.4 / 状態ストアが必要)
 ```
 
 ---

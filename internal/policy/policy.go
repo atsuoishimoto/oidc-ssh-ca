@@ -174,6 +174,13 @@ func Parse(data []byte) (*Policy, error) {
 
 var ruleNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
+// principalRe constrains certificate principals. A principal becomes an
+// OpenSSH certificate field and is matched against the target server's
+// AuthorizedPrincipalsFile, so whitespace, commas, newlines, control
+// characters, and unbounded length are rejected: a misconfigured policy
+// must fail safe rather than emit a principal that confuses sshd.
+var principalRe = regexp.MustCompile(`^[A-Za-z0-9._@:-]{1,128}$`)
+
 // Validate checks semantic constraints beyond YAML decoding.
 func (p *Policy) Validate() error {
 	if p.Version != 1 {
@@ -233,6 +240,9 @@ func (p *Policy) Validate() error {
 		for _, principal := range c.Principals {
 			if principal == "" {
 				return fmt.Errorf("policy: %s: certificate.principals contains an empty principal", where)
+			}
+			if !principalRe.MatchString(principal) {
+				return fmt.Errorf("policy: %s: certificate.principals %q contains characters outside [A-Za-z0-9._@:-] or exceeds 128 bytes", where, principal)
 			}
 		}
 		if c.ValidForSeconds <= 0 {
