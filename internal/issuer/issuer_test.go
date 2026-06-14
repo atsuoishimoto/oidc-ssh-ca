@@ -96,6 +96,52 @@ func TestIssueRoundTrip(t *testing.T) {
 	}
 }
 
+func TestIssueCriticalOptions(t *testing.T) {
+	signer, _ := newTestSigner(t)
+	clientPub, _ := clientPublicKey(t)
+
+	now := time.Now()
+	certBytes, _, err := Issue(signer, &Request{
+		PublicKey:     clientPub,
+		KeyID:         "k",
+		Principals:    []string{"gha-prod-deploy"},
+		ValidAfter:    now.Add(-30 * time.Second),
+		ValidBefore:   now.Add(600 * time.Second),
+		ForceCommand:  "/usr/local/bin/deploy.sh",
+		SourceAddress: []string{"192.0.2.0/24", "2001:db8::/32"},
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	parsed, _, _, _, err := ssh.ParseAuthorizedKey(certBytes)
+	if err != nil {
+		t.Fatalf("issued certificate does not parse: %v", err)
+	}
+	got := parsed.(*ssh.Certificate)
+	if cmd := got.Permissions.CriticalOptions["force-command"]; cmd != "/usr/local/bin/deploy.sh" {
+		t.Errorf("force-command = %q", cmd)
+	}
+	if src := got.Permissions.CriticalOptions["source-address"]; src != "192.0.2.0/24,2001:db8::/32" {
+		t.Errorf("source-address = %q", src)
+	}
+
+	// Without restrictions, no critical options are set.
+	certBytes, _, err = Issue(signer, &Request{
+		PublicKey:   clientPub,
+		KeyID:       "k",
+		Principals:  []string{"p"},
+		ValidAfter:  now,
+		ValidBefore: now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	parsed, _, _, _, _ = ssh.ParseAuthorizedKey(certBytes)
+	if opts := parsed.(*ssh.Certificate).Permissions.CriticalOptions; len(opts) != 0 {
+		t.Errorf("expected no critical options, got %v", opts)
+	}
+}
+
 func TestValidatePublicKey(t *testing.T) {
 	_, line := clientPublicKey(t)
 	allowed := []string{"ssh-ed25519"}

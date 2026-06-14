@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -86,6 +88,15 @@ type Certificate struct {
 	ValidForSeconds int         `yaml:"valid_for_seconds"`
 	KeyIDTemplate   string      `yaml:"key_id_template"`
 	Extensions      *Extensions `yaml:"extensions"`
+	// ForceCommand, when set, is embedded as the certificate's
+	// force-command critical option: the target server runs only this
+	// command regardless of what the client requests. It is used
+	// verbatim — no ${claim} expansion — so it never carries
+	// caller-controlled data.
+	ForceCommand string `yaml:"force_command"`
+	// SourceAddress, when set, is embedded as the source-address critical
+	// option: a list of CIDR ranges the certificate may be used from.
+	SourceAddress []string `yaml:"source_address"`
 }
 
 // ValidAfterOffsetSeconds returns the effective valid_after offset.
@@ -247,6 +258,46 @@ func (p *Policy) Validate() error {
 		}
 		if _, err := templateVars(c.KeyIDTemplate); err != nil {
 			return fmt.Errorf("policy: %s: %w", where, err)
+		}
+		if err := validateForceCommand(c.ForceCommand); err != nil {
+			return fmt.Errorf("policy: %s: %w", where, err)
+		}
+		if err := validateSourceAddress(c.SourceAddress); err != nil {
+			return fmt.Errorf("policy: %s: %w", where, err)
+		}
+	}
+	return nil
+}
+
+// validateForceCommand checks an optional force_command. It is used
+// verbatim in the certificate, so claim templating is rejected (to avoid
+// the illusion that ${claim} expands) and control characters are rejected
+// (they would corrupt the certificate and audit log).
+func validateForceCommand(cmd string) error {
+	if cmd == "" {
+		return nil
+	}
+	if strings.Contains(cmd, "${") {
+		return errors.New("certificate.force_command does not support ${claim} templating; it is used verbatim")
+	}
+	for _, r := range cmd {
+		if r < 0x20 || r == 0x7f {
+			return errors.New("certificate.force_command contains a control character")
+		}
+	}
+	return nil
+}
+
+// validateSourceAddress checks that every source_address entry is valid
+// CIDR notation. Values are never silently rewritten, so a bare address
+// without a mask (e.g. 192.0.2.10) is an error: write 192.0.2.10/32.
+func validateSourceAddress(cidrs []string) error {
+	for _, c := range cidrs {
+		if c == "" {
+			return errors.New("certificate.source_address contains an empty entry")
+		}
+		if _, _, err := net.ParseCIDR(c); err != nil {
+			return fmt.Errorf("certificate.source_address %q is not CIDR notation (e.g. 192.0.2.0/24 or 2001:db8::/32)", c)
 		}
 	}
 	return nil

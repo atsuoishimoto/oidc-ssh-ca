@@ -82,6 +82,28 @@ rules:
 	}
 }
 
+// withCertField appends a field to the rule's certificate block.
+func withCertField(policyYAML, field string) string {
+	const anchor = `      key_id_template: "gha:${repository}:${run_id}:${run_attempt}"`
+	return strings.Replace(policyYAML, anchor, anchor+"\n      "+field, 1)
+}
+
+func TestParseCertificateRestrictions(t *testing.T) {
+	src := withCertField(validPolicy, `force_command: "/usr/local/bin/deploy.sh"`)
+	src = withCertField(src, "source_address:\n        - \"192.0.2.0/24\"\n        - \"2001:db8::/32\"")
+	p, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	c := p.Rules[0].Certificate
+	if c.ForceCommand != "/usr/local/bin/deploy.sh" {
+		t.Errorf("ForceCommand = %q", c.ForceCommand)
+	}
+	if len(c.SourceAddress) != 2 || c.SourceAddress[0] != "192.0.2.0/24" {
+		t.Errorf("SourceAddress = %v", c.SourceAddress)
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -119,6 +141,15 @@ func TestParseErrors(t *testing.T) {
 			dup := strings.Replace(strings.SplitAfter(s, "rules:\n")[1], "ssh-ca-prod", "ssh-ca-other", 1)
 			return s + "\n" + dup
 		}, "duplicate rule name"},
+		{"source_address not CIDR", func(s string) string {
+			return withCertField(s, `source_address: ["192.0.2.10"]`)
+		}, "CIDR"},
+		{"force_command templating", func(s string) string {
+			return withCertField(s, `force_command: "deploy ${repository}"`)
+		}, "templating"},
+		{"force_command control char", func(s string) string {
+			return withCertField(s, "force_command: \"deploy\\tnow\"")
+		}, "control character"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

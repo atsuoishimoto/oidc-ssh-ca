@@ -150,23 +150,32 @@ func (s *Server) Sign(ctx context.Context, method, authHeader string, body []byt
 
 	now := s.now()
 	certBytes, _, err := issuer.Issue(s.signer, &issuer.Request{
-		PublicKey:   pub,
-		KeyID:       keyID,
-		Principals:  rule.Certificate.Principals,
-		ValidAfter:  now.Add(time.Duration(pol.ValidAfterOffsetSeconds()) * time.Second),
-		ValidBefore: now.Add(time.Duration(rule.Certificate.ValidForSeconds) * time.Second),
-		Extensions:  pol.ExtensionsFor(rule),
+		PublicKey:     pub,
+		KeyID:         keyID,
+		Principals:    rule.Certificate.Principals,
+		ValidAfter:    now.Add(time.Duration(pol.ValidAfterOffsetSeconds()) * time.Second),
+		ValidBefore:   now.Add(time.Duration(rule.Certificate.ValidForSeconds) * time.Second),
+		Extensions:    pol.ExtensionsFor(rule),
+		ForceCommand:  rule.Certificate.ForceCommand,
+		SourceAddress: rule.Certificate.SourceAddress,
 	})
 	if err != nil {
 		return s.deny(requestID, http.StatusInternalServerError, reasonSigningError, err.Error(), claimAttrs...)
 	}
 
-	s.audit.Issued(requestID, append([]any{
+	issuedAttrs := []any{
 		"rule", rule.Name,
 		"principals", rule.Certificate.Principals,
 		"key_id", keyID,
 		"valid_for_seconds", rule.Certificate.ValidForSeconds,
-	}, claimAttrs...)...)
+	}
+	if rule.Certificate.ForceCommand != "" {
+		issuedAttrs = append(issuedAttrs, "force_command", rule.Certificate.ForceCommand)
+	}
+	if len(rule.Certificate.SourceAddress) > 0 {
+		issuedAttrs = append(issuedAttrs, "source_address", rule.Certificate.SourceAddress)
+	}
+	s.audit.Issued(requestID, append(issuedAttrs, claimAttrs...)...)
 
 	return Response{
 		Status:      http.StatusOK,

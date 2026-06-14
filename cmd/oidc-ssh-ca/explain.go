@@ -43,6 +43,12 @@ func cmdExplain(args []string) error {
 		fmt.Printf("matched rule: %s\n", r.Name)
 		fmt.Printf("principals: %v\n", r.Certificate.Principals)
 		fmt.Printf("ttl: %ds\n", r.Certificate.ValidForSeconds)
+		if r.Certificate.ForceCommand != "" {
+			fmt.Printf("force_command: %s\n", r.Certificate.ForceCommand)
+		}
+		if len(r.Certificate.SourceAddress) > 0 {
+			fmt.Printf("source_address: %v\n", r.Certificate.SourceAddress)
+		}
 		keyID, err := policy.ExpandKeyID(r.Certificate.KeyIDTemplate, id.Claims)
 		if err != nil {
 			fmt.Printf("key_id: DENIED at issuance time: %v\n", err)

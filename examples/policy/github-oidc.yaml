@@ -43,3 +43,13 @@ rules:
         - "gha-prod-deploy"
       valid_for_seconds: 600
       key_id_template: "gha:${repository}:${run_id}:${run_attempt}"
+
+      # Optional hardening, enforced by the CA on the certificate itself:
+      #   force_command  - the target runs only this command, ignoring
+      #                    whatever the client asks for (verbatim; no
+      #                    ${claim} expansion).
+      #   source_address - the certificate is only usable from these CIDR
+      #                    ranges (mainly useful with self-hosted runners).
+      # force_command: "/usr/local/bin/deploy.sh"
+      # source_address:
+      #   - "192.0.2.0/24"

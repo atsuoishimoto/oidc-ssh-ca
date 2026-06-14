@@ -151,11 +151,15 @@ into a new incident source:
 - **Protect the CA key.** Single source, `0600` or stricter, never on
   disk in a runner or in version control. Have the rotation runbook ready
   before you need it.
-- **Defend in depth on the target server.** Beyond `TrustedUserCAKeys`
-  and `AuthorizedPrincipalsFile`, restrict what a principal can do with
-  `force-command`, and `from=` where the caller's source addresses are
-  predictable. (GitHub-hosted runners use broad IP ranges, so `from=`
-  helps mainly with self-hosted runners.)
+- **Constrain what a certificate can do, not just who gets one.** A rule
+  can set `certificate.force_command` (the target runs only that command,
+  so a leaked certificate cannot open a shell) and
+  `certificate.source_address` (a CIDR allowlist of where the certificate
+  may be used). Both are baked into the certificate by the CA, so they
+  apply on every target without per-host configuration. GitHub-hosted
+  runners use broad IP ranges, so `source_address` helps mainly with
+  self-hosted runners. See the
+  [policy reference](policy.md#certificateforce_command).
 - **Plan for CA availability.** A deploy now depends on the CA being
   reachable; size and monitor it like the production dependency it is.
 - **Watch the audit log.** Alert on `certificate_denied` spikes and on
