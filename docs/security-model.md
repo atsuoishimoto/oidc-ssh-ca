@@ -21,15 +21,24 @@ GitHub OIDC token, and receives a certificate valid for a few minutes. The
 core shift is **what leaks and for how long**, not whether a compromised
 run can reach your servers.
 
-| Aspect | SSH key in GitHub Secrets | oidc-ssh-ca |
-|---|---|---|
-| Secret stored at GitHub | long-lived SSH private key | none; an OIDC token is fetched per run |
-| Material on the runner | the long-lived private key | ephemeral key + OIDC JWT + short-lived cert |
-| Lifetime if leaked | until rotated everywhere | the token / certificate TTL (minutes) — but a leaked **CA key** is severe |
-| Authorization granularity | whichever workflow can read the secret | `repository`, `ref`, `environment`, `event_name`, `job_workflow_ref`, ... |
-| Target-server management | distribute / rotate `authorized_keys` | trust the CA public key; manage principals |
-| Availability | no CA needed | issuance fails if the CA is unreachable |
-| Worst-case leak | one deploy key's blast radius | CA key compromise affects every server that trusts it |
+Point by point, *stored key* versus *oidc-ssh-ca*:
+
+- **Secret stored at GitHub** — a long-lived SSH private key, versus none
+  (an OIDC token is fetched per run).
+- **Material on the runner** — the long-lived private key, versus an
+  ephemeral key, the OIDC JWT, and a short-lived certificate.
+- **Lifetime if leaked** — valid until rotated everywhere, versus the
+  token / certificate TTL (minutes) — except a leaked CA key, which is
+  severe.
+- **Authorization granularity** — whichever workflow can read the secret,
+  versus claim matching on `repository`, `ref`, `environment`,
+  `event_name`, `job_workflow_ref`, and so on.
+- **Target-server management** — distribute and rotate `authorized_keys`,
+  versus trust the CA public key and manage principals.
+- **Availability** — no CA needed, versus issuance fails if the CA is
+  unreachable.
+- **Worst-case leak** — one deploy key's blast radius, versus CA-key
+  compromise affecting every server that trusts it.
 
 ## What you stop trusting
 
