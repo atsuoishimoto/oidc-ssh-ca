@@ -116,6 +116,10 @@ is the recommended default.
 
 ## 4. Trust the CA on target servers
 
+The `deploy` login account must already exist on the server —
+`oidc-ssh-ca` never creates Unix users; it only decides which certificate
+principals may use an existing account.
+
 Export the CA public key:
 
 ```bash
