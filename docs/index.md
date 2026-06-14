@@ -77,6 +77,7 @@ ansible
 :caption: Reference
 
 policy
+security-model
 api
 commands
 operations
