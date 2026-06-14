@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -52,6 +53,10 @@ type Request struct {
 	ValidAfter  time.Time
 	ValidBefore time.Time
 	Extensions  policy.Extensions
+	// ForceCommand and SourceAddress, when set, become the force-command
+	// and source-address certificate critical options.
+	ForceCommand  string
+	SourceAddress []string
 }
 
 // Issue builds and signs a user certificate, returning it in
@@ -71,13 +76,29 @@ func Issue(s Signer, req *Request) ([]byte, *ssh.Certificate, error) {
 		ValidAfter:      uint64(req.ValidAfter.Unix()),
 		ValidBefore:     uint64(req.ValidBefore.Unix()),
 		Permissions: ssh.Permissions{
-			Extensions: extensionMap(req.Extensions),
+			CriticalOptions: criticalOptionMap(req),
+			Extensions:      extensionMap(req.Extensions),
 		},
 	}
 	if err := s.SignCertificate(cert); err != nil {
 		return nil, nil, fmt.Errorf("issue: sign: %w", err)
 	}
 	return ssh.MarshalAuthorizedKey(cert), cert, nil
+}
+
+// criticalOptionMap builds the certificate's critical options. Unlike
+// extensions, a target server that does not understand a critical option
+// must reject the certificate; force-command and source-address are
+// standard options understood by every OpenSSH version.
+func criticalOptionMap(req *Request) map[string]string {
+	out := map[string]string{}
+	if req.ForceCommand != "" {
+		out["force-command"] = req.ForceCommand
+	}
+	if len(req.SourceAddress) > 0 {
+		out["source-address"] = strings.Join(req.SourceAddress, ",")
+	}
+	return out
 }
 
 func extensionMap(e policy.Extensions) map[string]string {

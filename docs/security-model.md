@@ -21,15 +21,24 @@ GitHub OIDC token, and receives a certificate valid for a few minutes. The
 core shift is **what leaks and for how long**, not whether a compromised
 run can reach your servers.
 
-| Aspect | SSH key in GitHub Secrets | oidc-ssh-ca |
-|---|---|---|
-| Secret stored at GitHub | long-lived SSH private key | none; an OIDC token is fetched per run |
-| Material on the runner | the long-lived private key | ephemeral key + OIDC JWT + short-lived cert |
-| Lifetime if leaked | until rotated everywhere | the token / certificate TTL (minutes) — but a leaked **CA key** is severe |
-| Authorization granularity | whichever workflow can read the secret | `repository`, `ref`, `environment`, `event_name`, `job_workflow_ref`, ... |
-| Target-server management | distribute / rotate `authorized_keys` | trust the CA public key; manage principals |
-| Availability | no CA needed | issuance fails if the CA is unreachable |
-| Worst-case leak | one deploy key's blast radius | CA key compromise affects every server that trusts it |
+Point by point, *stored key* versus *oidc-ssh-ca*:
+
+- **Secret stored at GitHub** — a long-lived SSH private key, versus none
+  (an OIDC token is fetched per run).
+- **Material on the runner** — the long-lived private key, versus an
+  ephemeral key, the OIDC JWT, and a short-lived certificate.
+- **Lifetime if leaked** — valid until rotated everywhere, versus the
+  token / certificate TTL (minutes) — except a leaked CA key, which is
+  severe.
+- **Authorization granularity** — whichever workflow can read the secret,
+  versus claim matching on `repository`, `ref`, `environment`,
+  `event_name`, `job_workflow_ref`, and so on.
+- **Target-server management** — distribute and rotate `authorized_keys`,
+  versus trust the CA public key and manage principals.
+- **Availability** — no CA needed, versus issuance fails if the CA is
+  unreachable.
+- **Worst-case leak** — one deploy key's blast radius, versus CA-key
+  compromise affecting every server that trusts it.
 
 ## What you stop trusting
 
@@ -142,11 +151,15 @@ into a new incident source:
 - **Protect the CA key.** Single source, `0600` or stricter, never on
   disk in a runner or in version control. Have the rotation runbook ready
   before you need it.
-- **Defend in depth on the target server.** Beyond `TrustedUserCAKeys`
-  and `AuthorizedPrincipalsFile`, restrict what a principal can do with
-  `force-command`, and `from=` where the caller's source addresses are
-  predictable. (GitHub-hosted runners use broad IP ranges, so `from=`
-  helps mainly with self-hosted runners.)
+- **Constrain what a certificate can do, not just who gets one.** A rule
+  can set `certificate.force_command` (the target runs only that command,
+  so a leaked certificate cannot open a shell) and
+  `certificate.source_address` (a CIDR allowlist of where the certificate
+  may be used). Both are baked into the certificate by the CA, so they
+  apply on every target without per-host configuration. GitHub-hosted
+  runners use broad IP ranges, so `source_address` helps mainly with
+  self-hosted runners. See the
+  [policy reference](policy.md#certificateforce_command).
 - **Plan for CA availability.** A deploy now depends on the CA being
   reachable; size and monitor it like the production dependency it is.
 - **Watch the audit log.** Alert on `certificate_denied` spikes and on

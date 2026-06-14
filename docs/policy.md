@@ -264,6 +264,47 @@ Optional. Same fields as `defaults.extensions`. When present it
 effective extensions are the rule's block if set, otherwise the defaults
 block, otherwise everything off.
 
+### `certificate.force_command`
+
+Optional, string. When set, it is embedded as the certificate's
+`force-command` critical option: the target server ignores whatever
+command the client asks for and runs **only this one**. Use it to bind a
+deploy certificate to a single script (`/usr/local/bin/deploy.sh`) so a
+leaked certificate cannot be used for an interactive shell or an arbitrary
+command.
+
+It is used **verbatim** — there is no `${claim}` expansion, so it never
+carries caller-controlled data. A value containing `${...}` is a
+validation error (to avoid the illusion that it templates), as is one
+containing control characters. This is enforced at the CA, on the
+certificate itself, so it applies on every target server without per-host
+configuration.
+
+### `certificate.source_address`
+
+Optional, list of strings. When set, it is embedded as the
+`source-address` critical option: the certificate is only accepted when
+the client connects from one of these CIDR ranges. Each entry must be
+**CIDR notation** — a bare address is an error, so write `192.0.2.10/32`,
+not `192.0.2.10`. Both IPv4 and IPv6 are accepted
+(`192.0.2.0/24`, `2001:db8::/32`).
+
+```yaml
+certificate:
+  principals: ["gha-prod-deploy"]
+  valid_for_seconds: 600
+  key_id_template: "gha:${repository}:${run_id}"
+  force_command: "/usr/local/bin/deploy.sh"
+  source_address:
+    - "192.0.2.0/24"
+```
+
+GitHub-hosted runners use broad, changing IP ranges, so `source_address`
+is mainly useful with self-hosted runners or a fixed NAT egress.
+`force-command` and `source-address` are standard OpenSSH critical
+options understood by every server, so enabling them does not risk an
+"unknown critical option" rejection.
+
 ## Matching semantics
 
 - **Deny by default.** A request is allowed only if a rule matches.

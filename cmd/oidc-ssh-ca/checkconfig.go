@@ -61,8 +61,15 @@ func cmdCheckConfig(args []string) error {
 		if !r.IsEnabled() {
 			state = "disabled"
 		}
-		fmt.Printf("  rule %q (%s): principals=%v ttl=%ds\n",
-			r.Name, state, r.Certificate.Principals, r.Certificate.ValidForSeconds)
+		extra := ""
+		if r.Certificate.ForceCommand != "" {
+			extra += fmt.Sprintf(" force_command=%q", r.Certificate.ForceCommand)
+		}
+		if len(r.Certificate.SourceAddress) > 0 {
+			extra += fmt.Sprintf(" source_address=%v", r.Certificate.SourceAddress)
+		}
+		fmt.Printf("  rule %q (%s): principals=%v ttl=%ds%s\n",
+			r.Name, state, r.Certificate.Principals, r.Certificate.ValidForSeconds, extra)
 	}
 	for _, w := range warnings {
 		fmt.Println("warning:", w)
