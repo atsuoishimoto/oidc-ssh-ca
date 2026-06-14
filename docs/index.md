@@ -45,13 +45,6 @@ It is short-lived and restricted to the command encoded in the certificate.
 
 ```{toctree}
 :maxdepth: 2
-:caption: Background
-
-why-teams
-```
-
-```{toctree}
-:maxdepth: 2
 :caption: Getting started
 
 quickstart
@@ -79,10 +72,17 @@ ansible
 
 ```{toctree}
 :maxdepth: 2
+:caption: Concepts
+
+why-teams
+security-model
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: Reference
 
 policy
-security-model
 api
 commands
 operations
