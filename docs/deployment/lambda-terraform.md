@@ -22,10 +22,16 @@ build it:
 
 ```bash
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
-  go build -trimpath -ldflags="-s -w" -tags lambda.norpc \
-  -o bootstrap ./cmd/oidc-ssh-ca
-zip lambda.zip bootstrap policy.yaml
+  go build -trimpath -ldflags="-s -w" \
+  -o oidc-ssh-ca ./cmd/oidc-ssh-ca
+cp examples/lambda/run.sh .
+zip lambda.zip oidc-ssh-ca run.sh policy.yaml
 ```
+
+The function runs the ordinary HTTP server behind the AWS-provided
+[Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) layer
+(set as `layers` below), which converts Function URL events into `POST /sign`
+requests. `run.sh` (the handler) is at `examples/lambda/run.sh`.
 
 ## 2. main.tf
 
@@ -71,7 +77,12 @@ resource "aws_lambda_function" "ca" {
 
   runtime       = "provided.al2023"
   architectures = ["arm64"]
-  handler       = "bootstrap"
+  handler       = "run.sh"
+
+  # AWS Lambda Web Adapter. Pick the ARN for your architecture and region;
+  # the version may be newer when you deploy. See
+  # https://github.com/awslabs/aws-lambda-web-adapter
+  layers = ["arn:aws:lambda:ap-northeast-1:753240598075:layer:LambdaAdapterLayerArm64:28"]
 
   filename         = "${path.module}/lambda.zip"
   source_code_hash = filebase64sha256("${path.module}/lambda.zip")
@@ -86,6 +97,8 @@ resource "aws_lambda_function" "ca" {
     variables = {
       # Lambda environment variables are encrypted at rest.
       OIDC_SSH_CA_KEY = file("${path.module}/ca_key")
+      # Start the binary through the Lambda Web Adapter.
+      AWS_LAMBDA_EXEC_WRAPPER = "/opt/bootstrap"
     }
   }
 }
@@ -128,7 +141,7 @@ workflow.
 `source_code_hash` makes Terraform pick up the change:
 
 ```bash
-zip lambda.zip bootstrap policy.yaml
+zip lambda.zip oidc-ssh-ca run.sh policy.yaml
 terraform apply
 ```
 

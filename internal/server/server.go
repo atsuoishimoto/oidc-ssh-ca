@@ -1,6 +1,7 @@
 // Package server implements the signing flow behind POST /sign and the
-// transports that expose it (net/http here, AWS Lambda in
-// internal/lambda).
+// net/http transport that exposes it. On AWS Lambda the same HTTP server
+// runs unchanged behind the Lambda Web Adapter, so there is no
+// Lambda-specific transport.
 //
 // Error responses are deliberately generic — a fixed message plus a
 // request ID. Denial reasons and internal details go only to the audit

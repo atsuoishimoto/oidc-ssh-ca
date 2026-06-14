@@ -257,17 +257,17 @@ NoNewPrivileges=yes
 
 ### 6.3 Lambda / サーバレス運用
 
-低頻度の運用用途向けです。Go は AWS Lambda の `provided.al2023` ランタイムで動くため、**コンテナイメージは不要**で、binary を zip にしてデプロイできます。
+低頻度の運用用途向けです。Go は AWS Lambda の `provided.al2023` ランタイムで動くため、**コンテナイメージは不要**で、binary を zip にしてデプロイできます。Lambda 専用のコードは持たず、Lambda 上では通常の `serve`（HTTP サーバ）をそのまま起動し、AWS 提供の **Lambda Web Adapter (LWA)** レイヤーが Function URL イベントを `POST /sign` の HTTP リクエストへ変換します。`aws-lambda-go` への依存も不要です。
 
 ```text
 GitHub Actions / Terraform
-  ↓ zip (bootstrap binary)
-Lambda (provided.al2023) + Function URL
+  ↓ zip (oidc-ssh-ca binary + run.sh + policy.yaml)
+Lambda (provided.al2023) + Lambda Web Adapter layer + Function URL
   ↓
 Secrets Manager / SSM / CloudWatch
 ```
 
-ECR リポジトリの管理・イメージのビルドとプッシュが不要になり、AWS デプロイの構成要素が「zip + 関数 + ロール」まで減ります。コールドスタートも Go zip はコンテナイメージより速い傾向があります。
+ハンドラは `run.sh`（`examples/lambda/run.sh`）に設定し、環境変数 `AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap` で LWA 経由の起動を指定します。ECR リポジトリの管理・イメージのビルドとプッシュが不要になり、AWS デプロイの構成要素が「zip + LWA レイヤー + 関数 + ロール」まで減ります。コールドスタートも Go zip はコンテナイメージより速い傾向があります。
 
 AWS 固有機能は初期の中核機能ではなく、後述の発展機能として扱います。
 
@@ -1294,14 +1294,14 @@ AWS 専用なら SSM で済む場面も多いため、AWS 機能は中核では�
 
 ### 21.1 Lambda Function URL (zip デプロイ)
 
-AWS 向けには、`provided.al2023` ランタイム用の zip を提供します。コンテナイメージと ECR は不要です。
+AWS 向けには、`provided.al2023` ランタイム用の zip を提供します。コンテナイメージと ECR は不要です。Lambda 専用コードは持たず、通常の `serve` HTTP サーバを **Lambda Web Adapter (LWA)** レイヤーの背後で動かします（ハンドラ `run.sh`、`AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap`）。
 
 ```text
 GitHub Actions
   ↓ OIDC
 AWS STS AssumeRoleWithWebIdentity
   ↓ temporary AWS credentials
-Lambda Function URL with AWS_IAM (zip / provided.al2023)
+Lambda Function URL with AWS_IAM (zip / provided.al2023 + LWA layer)
   ↓ SSH certificate
 外部サーバ
 ```
