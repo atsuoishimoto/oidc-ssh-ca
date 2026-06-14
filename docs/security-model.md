@@ -98,10 +98,15 @@ obtain them during a legitimate run. Be explicit about the limits:
   while it runs — a malicious dependency, a poisoned step, an injected
   script — they can fetch the OIDC token, request a certificate, and SSH,
   exactly as they could read a stored secret. OIDC proves *which workflow
-  run* is calling; it does not prove the code in that run is benign.
-  Against this threat `oidc-ssh-ca` offers no advantage over a stored
-  secret; its value is bounded to reducing the standing secret and the
-  blast radius over time.
+  run* is calling; it does not prove the code in that run is benign. What
+  `oidc-ssh-ca` can still do is **limit what that certificate is able to
+  do**: with `certificate.force_command` the certificate runs only your
+  deploy script, never an interactive shell or an arbitrary command, and
+  with `certificate.source_address` it is usable only from your runner's
+  network. A stored SSH key, by contrast, is full access wherever it is
+  authorized. So the right framing is not "no protection" but "the
+  credential expires in minutes *and* is scoped to a single action" —
+  see [force-command below](#use-force-command-to-cap-the-blast-radius).
 - **The OIDC token is a bearer token.** Anyone holding a valid GitHub
   OIDC JWT can present their own public key to `/sign` and receive a
   certificate while the token is valid. Handle the JWT with the same care
@@ -112,6 +117,42 @@ obtain them during a legitimate run. Be explicit about the limits:
   pinning the connection remains open to a machine-in-the-middle. Pin
   `known_hosts` and use `StrictHostKeyChecking=yes`, as the
   [Quickstart](quickstart.md) workflow does.
+
+## Use force-command to cap the blast radius
+
+The single biggest reason to prefer certificates over a stored key is not
+that they expire — it is that the CA decides, per rule, **what the holder
+may do with one**. A stored SSH key authorizes a login; from there the
+holder runs whatever the account allows. A certificate issued with
+`certificate.force_command` runs exactly one command and nothing else.
+
+This changes the worst case in concrete ways:
+
+- **A leaked or misused certificate cannot pivot.** With
+  `force_command: "/usr/local/bin/deploy.sh"` there is no interactive
+  shell, no `cat ~/.ssh/id_rsa`, no `curl | sh` — the only thing the
+  certificate can do is run your deploy script. Whatever the attacker
+  asks for, sshd runs the forced command instead.
+- **It narrows even the unpreventable case.** A compromised runner can
+  still obtain a certificate (above), but `force_command` bounds that
+  certificate to one action, and `source_address` bounds it to one
+  network — turning "an attacker has SSH for a few minutes" into "an
+  attacker can run the deploy script, from our runners, for a few
+  minutes." A stored key offers neither bound.
+- **It is enforced at the CA, on the certificate itself.** You do not
+  have to trust that every target server's `AuthorizedPrincipalsFile`
+  carries the right `command=`/`from=` options; the restriction travels
+  with the certificate and applies on every host that trusts the CA. One
+  policy rule, enforced everywhere.
+- **It costs nothing operationally.** `force-command` and
+  `source-address` are standard OpenSSH critical options understood by
+  every server, so there is no compatibility risk and no per-host setup.
+
+The pattern that gets the most out of this CA, then, is *narrow rule +
+short TTL + `force_command`*: a certificate that only the right workflow
+can obtain, that dies in minutes, and that can do exactly one thing while
+it lives. See the [policy reference](policy.md#certificateforce_command)
+for the fields.
 
 ## When this is worth it
 
@@ -151,15 +192,11 @@ into a new incident source:
 - **Protect the CA key.** Single source, `0600` or stricter, never on
   disk in a runner or in version control. Have the rotation runbook ready
   before you need it.
-- **Constrain what a certificate can do, not just who gets one.** A rule
-  can set `certificate.force_command` (the target runs only that command,
-  so a leaked certificate cannot open a shell) and
-  `certificate.source_address` (a CIDR allowlist of where the certificate
-  may be used). Both are baked into the certificate by the CA, so they
-  apply on every target without per-host configuration. GitHub-hosted
-  runners use broad IP ranges, so `source_address` helps mainly with
-  self-hosted runners. See the
-  [policy reference](policy.md#certificateforce_command).
+- **Constrain what a certificate can do, not just who gets one.** Set
+  `certificate.force_command` so a certificate runs only your deploy
+  script, and `certificate.source_address` to bound where it works. This
+  is the highest-leverage control here — see
+  [Use force-command to cap the blast radius](#use-force-command-to-cap-the-blast-radius).
 - **Plan for CA availability.** A deploy now depends on the CA being
   reachable; size and monitor it like the production dependency it is.
 - **Watch the audit log.** Alert on `certificate_denied` spikes and on
