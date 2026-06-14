@@ -5,7 +5,6 @@ go 1.25.0
 toolchain go1.25.11
 
 require (
-	github.com/aws/aws-lambda-go v1.47.0
 	github.com/coreos/go-oidc/v3 v3.11.0
 	golang.org/x/crypto v0.52.0
 	gopkg.in/yaml.v3 v3.0.1

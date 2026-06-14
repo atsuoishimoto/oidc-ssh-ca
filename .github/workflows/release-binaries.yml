@@ -64,14 +64,16 @@ jobs:
             rm build/oidc-ssh-ca
           done
 
-          # Lambda artifacts: the binary must be named bootstrap on
-          # provided.al2023.
+          # Lambda artifacts: the function runs the ordinary binary behind
+          # the AWS Lambda Web Adapter, started by run.sh (the handler).
           for arch in amd64 arm64; do
             CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
               go build -trimpath -ldflags "$ldflags" \
-              -o build/bootstrap ./cmd/oidc-ssh-ca
-            (cd build && zip -q "../dist/oidc-ssh-ca_${VERSION}_lambda_${arch}.zip" bootstrap)
-            rm build/bootstrap
+              -o build/oidc-ssh-ca ./cmd/oidc-ssh-ca
+            cp examples/lambda/run.sh build/run.sh
+            chmod +x build/run.sh
+            (cd build && zip -q "../dist/oidc-ssh-ca_${VERSION}_lambda_${arch}.zip" oidc-ssh-ca run.sh)
+            rm build/oidc-ssh-ca build/run.sh
           done
 
           (cd dist && sha256sum * > checksums.txt)

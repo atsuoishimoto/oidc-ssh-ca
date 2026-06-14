@@ -5,27 +5,32 @@ For AWS users who want the smallest possible footprint: three resources
 There is no state file, no S3 staging bucket (zips under 50 MB upload
 directly), and nothing to host while idle.
 
-The binary handles Lambda Function URL events natively — no HTTP server, no
-container image, no adapter layer. Deployed as `bootstrap` on
-`provided.al2023`, it detects the Lambda runtime and serves events directly;
-the request and response format is identical to the standalone server, so
-the GitHub Actions workflow is unchanged.
+There is no Lambda-specific code in the binary: on Lambda it runs the same
+ordinary HTTP server as everywhere else, behind the AWS-provided
+[Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) (LWA)
+layer, which converts each Function URL event into a `POST /sign` request. No
+container image is needed. The request and response format is identical to the
+standalone server, so the GitHub Actions workflow is unchanged.
 
 If you prefer declarative infrastructure, the same setup is available as
 [Terraform](lambda-terraform.md).
 
 ## 1. Build the zip
 
-The zip contains the binary and the policy. The policy is loaded once at
-cold start (`OIDC_SSH_CA_CONFIG` overrides the path; the default is
-`policy.yaml` in the zip).
+The zip contains the binary, the `run.sh` startup script (the LWA handler), and
+the policy. The policy is loaded once at cold start from `policy.yaml` in the
+zip. `run.sh` is in the repository at `examples/lambda/run.sh`.
 
 ```bash
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
-  go build -trimpath -ldflags="-s -w" -tags lambda.norpc \
-  -o bootstrap ./cmd/oidc-ssh-ca
-zip lambda.zip bootstrap policy.yaml
+  go build -trimpath -ldflags="-s -w" \
+  -o oidc-ssh-ca ./cmd/oidc-ssh-ca
+cp examples/lambda/run.sh .
+zip lambda.zip oidc-ssh-ca run.sh policy.yaml
 ```
+
+`run.sh` must keep its executable bit inside the zip (creating the zip on
+Windows is a known way to lose it).
 
 ## 2. Create the execution role
 
@@ -48,22 +53,33 @@ aws iam attach-role-policy --role-name oidc-ssh-ca-lambda \
 
 ## 3. Create the function
 
+The function uses the LWA layer: its handler is `run.sh`, and
+`AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap` tells the runtime to start through the
+adapter. Pick the layer ARN for your architecture and region from the
+[LWA releases](https://github.com/awslabs/aws-lambda-web-adapter#lambda-functions-powered-by-aws-lambda-web-adapter)
+(`LambdaAdapterLayerArm64` for `arm64`); the version below may be newer by the
+time you deploy.
+
 The CA key goes into the `OIDC_SSH_CA_KEY` environment variable (Lambda
 environment variables are encrypted at rest). The key is multi-line, so
 build the `--environment` JSON with `jq` instead of inlining it. If the role
 was created seconds ago, IAM propagation may make this fail once — retry.
 
 ```bash
+LWA_LAYER="arn:aws:lambda:${AWS_REGION}:753240598075:layer:LambdaAdapterLayerArm64:28"
+
 aws lambda create-function \
   --function-name oidc-ssh-ca \
   --runtime provided.al2023 \
   --architectures arm64 \
-  --handler bootstrap \
+  --handler run.sh \
+  --layers "$LWA_LAYER" \
   --role "$(aws iam get-role --role-name oidc-ssh-ca-lambda --query Role.Arn --output text)" \
   --zip-file fileb://lambda.zip \
   --timeout 10 \
   --memory-size 128 \
-  --environment "$(jq -n --rawfile key ca_key '{Variables: {OIDC_SSH_CA_KEY: $key}}')"
+  --environment "$(jq -n --rawfile key ca_key \
+    '{Variables: {OIDC_SSH_CA_KEY: $key, AWS_LAMBDA_EXEC_WRAPPER: "/opt/bootstrap"}}')"
 
 # Cap the function at a single instance.
 aws lambda put-function-concurrency \
@@ -98,7 +114,7 @@ for the GitHub Actions workflow.
 no `SIGHUP` reload in Lambda; the zip is the unit of change):
 
 ```bash
-zip lambda.zip bootstrap policy.yaml
+zip lambda.zip oidc-ssh-ca run.sh policy.yaml
 aws lambda update-function-code --function-name oidc-ssh-ca \
   --zip-file fileb://lambda.zip
 ```

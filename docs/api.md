@@ -1,8 +1,8 @@
 # The /sign API
 
 The server exposes a single endpoint. The request and response format is
-identical across every deployment (standalone HTTP and Lambda Function
-URL), so clients never care where the CA runs.
+identical across every deployment (standalone HTTP, and Lambda behind the
+Lambda Web Adapter), so clients never care where the CA runs.
 
 ## Request
 

@@ -45,8 +45,7 @@ Go cross-compiles without a C toolchain because the build uses no cgo. Set
 GOOS=linux GOARCH=arm64 go build -o oidc-ssh-ca ./cmd/oidc-ssh-ca
 ```
 
-The same command, with `CGO_ENABLED=0`, produces the `bootstrap` binary for
-the AWS Lambda `provided.al2023` runtime — see
+The same linux binary runs on AWS Lambda behind the Lambda Web Adapter — see
 [Deploy to AWS Lambda with the CLI](deployment/lambda-cli.md).
 
 ## Build the container image

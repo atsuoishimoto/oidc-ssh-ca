@@ -107,7 +107,8 @@ make -C docs html    # docs/_build/html/index.html
 
 ## Status
 
-MVP plus native Lambda support. GitHub Actions OIDC (RS256) is the
+MVP plus AWS Lambda support (via the Lambda Web Adapter). GitHub Actions
+OIDC (RS256) is the
 supported identity source; only `ssh-ed25519` keys are accepted for both
 the CA and client keys. An Ansible role for target servers is included
 ([`ansible/`](ansible/)). AWS IAM identity matching and Terraform modules

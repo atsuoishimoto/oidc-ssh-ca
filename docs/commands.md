@@ -4,7 +4,6 @@
 
 ```text
 oidc-ssh-ca serve --config policy.yaml [--listen :8080] [--ca-key-file PATH]
-oidc-ssh-ca lambda [--config policy.yaml]
 oidc-ssh-ca check-config policy.yaml
 oidc-ssh-ca explain --policy policy.yaml --claims claims.json
 oidc-ssh-ca print-ca-pub [--ca-key-file PATH]
@@ -24,16 +23,10 @@ Runs the HTTP server.
 
 `SIGHUP` reloads the policy; `SIGTERM`/`SIGINT` shut down gracefully.
 
-## lambda
-
-Serves AWS Lambda Function URL events. Normally you never type this:
-when the process starts without arguments inside Lambda (deployed as
-`bootstrap` on `provided.al2023`, which sets `AWS_LAMBDA_RUNTIME_API`),
-lambda mode is selected automatically.
-
-The policy is loaded once at cold start from `--config`, the
-`OIDC_SSH_CA_CONFIG` environment variable, or `policy.yaml` in the zip, in
-that order. There is no reload — deploy a new zip to change the policy.
+On AWS Lambda the same `serve` server runs behind the
+[Lambda Web Adapter](deployment/lambda-cli.md); there is no separate Lambda
+mode. Policy reload is unavailable there — deploy a new zip to change the
+policy.
 
 ## check-config
 

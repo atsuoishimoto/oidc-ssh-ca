@@ -34,7 +34,7 @@ Positioning/audience wording lives in four places that must stay in sync: this f
 
 ## Architecture
 
-Single static binary with subcommands: `serve`, `lambda`, `check-config`, `explain`, `print-ca-pub` (spec also plans `sshd-config-example`).
+Single static binary with subcommands: `serve`, `check-config`, `explain`, `print-ca-pub` (spec also plans `sshd-config-example`).
 
 ```
 cmd/oidc-ssh-ca/   # main + one file per subcommand
@@ -42,16 +42,15 @@ internal/policy/   # YAML parse / validate / rule matching / key_id expansion
 internal/issuer/   # Signer abstraction + x/crypto/ssh implementation, CA key loading
 internal/oidc/     # JWT verification, JWKS cache
 internal/server/   # transport-agnostic Sign() pipeline + net/http transport
-internal/lambda/   # AWS Lambda Function URL transport over server.Sign()
 internal/audit/    # slog-based audit logging
 examples/          # github-actions, policy, sshd, systemd
 terraform/         # AWS deployment modules (planned, Phase 3)
 ansible/           # oidc_ssh_ca_trust role for target servers (planned, Phase 2)
 ```
 
-The signing pipeline (validate body/key → verify JWT → match policy → expand key ID → sign) lives in `server.(*Server).Sign()`, which is transport-agnostic and performs all audit logging. Transports (the net/http handler, the Lambda Function URL handler) only move bytes — add any new entry point the same way so the generic-error and audit guarantees stay in one place. In Lambda the binary is deployed as `bootstrap` (`provided.al2023`); `main()` auto-selects lambda mode when `AWS_LAMBDA_RUNTIME_API` is set. There is no policy reload in Lambda — the policy loads at cold start from the zip (`OIDC_SSH_CA_CONFIG`, default `policy.yaml`).
+The signing pipeline (validate body/key → verify JWT → match policy → expand key ID → sign) lives in `server.(*Server).Sign()`, which is transport-agnostic and performs all audit logging. The only transport is the net/http handler; add any new entry point the same way so the generic-error and audit guarantees stay in one place. **There is no Lambda-specific code.** On AWS Lambda the binary runs the ordinary `serve` HTTP server behind the AWS Lambda Web Adapter (LWA) layer, which converts Function URL events into `POST /sign` requests; the handler is `run.sh` (`examples/lambda/run.sh`) with `AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap`. There is no policy reload in Lambda — the policy loads at cold start from `policy.yaml` in the zip. Do not reintroduce a hand-written Lambda transport or the `aws-lambda-go` dependency.
 
-Deployment targets: binary + systemd (primary), AWS Lambda zip on `provided.al2023` (no container image needed), Docker distroless (convenience, planned).
+Deployment targets: binary + systemd (primary), AWS Lambda zip on `provided.al2023` via LWA (no container image needed), Docker distroless (convenience, planned).
 
 ## Build/Test Commands
 

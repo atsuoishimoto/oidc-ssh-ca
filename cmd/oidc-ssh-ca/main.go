@@ -12,16 +12,7 @@ import (
 var version = "0.1.0"
 
 func main() {
-	// On provided.al2023 the binary is deployed as "bootstrap" and
-	// started without arguments; serve Lambda events in that case.
 	if len(os.Args) < 2 {
-		if runningInLambda() {
-			if err := cmdLambda(nil); err != nil {
-				fmt.Fprintln(os.Stderr, "error:", err)
-				os.Exit(1)
-			}
-			return
-		}
 		usage()
 		os.Exit(2)
 	}
@@ -30,8 +21,6 @@ func main() {
 	switch os.Args[1] {
 	case "serve":
 		err = cmdServe(os.Args[2:])
-	case "lambda":
-		err = cmdLambda(os.Args[2:])
 	case "check-config":
 		err = cmdCheckConfig(os.Args[2:])
 	case "explain":
@@ -58,14 +47,10 @@ func usage() {
 
 Usage:
   oidc-ssh-ca serve --config policy.yaml [--listen :8080] [--ca-key-file PATH]
-  oidc-ssh-ca lambda [--config policy.yaml]
   oidc-ssh-ca check-config policy.yaml
   oidc-ssh-ca explain --policy policy.yaml --claims claims.json
   oidc-ssh-ca print-ca-pub [--ca-key-file PATH]
   oidc-ssh-ca version            (also: --version, -v)
-
-When started without arguments inside AWS Lambda (provided.al2023, the
-binary deployed as "bootstrap"), lambda mode is selected automatically.
 
 The CA private key is configured by exactly one of:
   --ca-key-file PATH        path to an OpenSSH ed25519 private key (0600)
