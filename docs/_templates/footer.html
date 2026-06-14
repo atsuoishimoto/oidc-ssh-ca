@@ -1,0 +1,12 @@
+{% extends "!footer.html" %}
+
+{# Add an "Edit on GitHub" link to the footer so it stays reachable on mobile,
+   where sphinx_rtd_theme hides the breadcrumb-aside edit link (max-width 480px). #}
+{% block extrafooter %}
+  {{ super() }}
+  {%- if display_github %}
+  <p>
+    <a href="https://{{ github_host|default("github.com") }}/{{ github_user }}/{{ github_repo }}/{{ theme_vcs_pageview_mode or "blob" }}/{{ github_version }}{{ conf_py_path }}{{ pagename }}{{ page_source_suffix }}">{{ _('Edit on GitHub') }}</a>
+  </p>
+  {%- endif %}
+{% endblock %}

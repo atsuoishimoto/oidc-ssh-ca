@@ -17,6 +17,9 @@ myst_heading_anchors = 3
 
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
+# Override footer.html to add a footer "Edit on GitHub" link (visible on mobile).
+templates_path = ["_templates"]
+
 html_theme = "sphinx_rtd_theme"
 html_theme_options = {
     "collapse_navigation": False,
