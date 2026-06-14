@@ -45,6 +45,13 @@ It is short-lived and restricted to the command encoded in the certificate.
 
 ```{toctree}
 :maxdepth: 2
+:caption: Background
+
+why-teams
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: Getting started
 
 quickstart
