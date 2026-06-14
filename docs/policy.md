@@ -273,13 +273,6 @@ deploy certificate to a single script (`/usr/local/bin/deploy.sh`) so a
 leaked certificate cannot be used for an interactive shell or an arbitrary
 command.
 
-It is used **verbatim** — there is no `${claim}` expansion, so it never
-carries caller-controlled data. A value containing `${...}` is a
-validation error (to avoid the illusion that it templates), as is one
-containing control characters. This is enforced at the CA, on the
-certificate itself, so it applies on every target server without per-host
-configuration.
-
 ### `certificate.source_address`
 
 Optional, list of strings. When set, it is embedded as the
