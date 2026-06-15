@@ -337,6 +337,16 @@ extensions
 
 caller には「リクエスト ID を添えて管理者に問い合わせる」導線を示し、デバッグは管理者がログで行います。拒否理由を詳細に返すことは、policy の探索 (どの claim を変えれば通るかの試行) を助けてしまうため行いません。
 
+### 7.2 `GET /ca-public-key`
+
+CA 公開鍵を OpenSSH `authorized_keys` 形式 (`print-ca-pub` と同一バイト列) で text/plain として返します。
+
+```text
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
+```
+
+CA 公開鍵は秘密情報ではなく、各対象サーバが `TrustedUserCAKeys` として信頼する値そのものなので、このエンドポイントは認証不要とします。対象サーバのプロビジョニング時に、CA 秘密鍵のそばで `print-ca-pub` を実行せずに公開鍵を取得できる利便性のために提供します (`curl https://ca.example.com/ca-public-key`)。`GET` (および `HEAD`) のみ許可し、それ以外のメソッドは 405 を返します。認証判断ではなく公開データの読み取りなので、監査ログには記録しません。
+
 ---
 
 ## 8. 設定ファイル方針
