@@ -207,7 +207,22 @@ func (s *Server) deny(requestID string, status int, reason, detail string, attrs
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/sign", s.handleSign)
+	mux.HandleFunc("/ca-public-key", s.handleCAPub)
 	return mux
+}
+
+// handleCAPub serves the CA public key in authorized_keys format. The CA
+// public key is not a secret — it is distributed to every target server
+// as TrustedUserCAKeys — so this endpoint is unauthenticated and reads no
+// secret state. It is a plain data read, not an authorization decision,
+// so it stays outside the audited Sign() pipeline.
+func (s *Server) handleCAPub(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write(ssh.MarshalAuthorizedKey(s.signer.PublicKey()))
 }
 
 func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {

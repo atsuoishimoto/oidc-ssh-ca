@@ -228,6 +228,36 @@ func TestE2EInProcess(t *testing.T) {
 		}
 	})
 
+	t.Run("serves the CA public key", func(t *testing.T) {
+		resp, err := http.Get(ca.URL + "/ca-public-key")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d", resp.StatusCode)
+		}
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The downloaded key must be the same trust anchor that verifies
+		// issued certificates.
+		downloaded, _, _, _, err := ssh.ParseAuthorizedKey(body)
+		if err != nil {
+			t.Fatalf("parse downloaded key: %v", err)
+		}
+		if !bytes.Equal(downloaded.Marshal(), caPub.Marshal()) {
+			t.Fatalf("downloaded key does not match the CA public key")
+		}
+		token := idp.MintToken(t, githubClaims(idp.Issuer()))
+		status, cert := postSign(t, ca.URL, token, clientKeyLine(t))
+		if status != http.StatusOK {
+			t.Fatalf("sign status = %d, body = %s", status, cert)
+		}
+		verifyCert(t, cert, downloaded)
+	})
+
 	// A key the IdP does not publish; signed with the published kid so
 	// verification fails on the signature itself.
 	rogueKey, err := rsa.GenerateKey(rand.Reader, 2048)

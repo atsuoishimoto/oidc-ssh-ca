@@ -250,6 +250,39 @@ func TestSignMethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestCAPublicKey(t *testing.T) {
+	srv, logBuf := newTestServer(t, testPolicy, goodIdentity())
+
+	req := httptest.NewRequest(http.MethodGet, "/ca-public-key", nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Fatalf("content type = %q", ct)
+	}
+	want := ssh.MarshalAuthorizedKey(srv.signer.PublicKey())
+	if got := rec.Body.Bytes(); !bytes.Equal(got, want) {
+		t.Fatalf("body = %q, want %q", got, want)
+	}
+	// Serving the public key must not write an audit event.
+	if logBuf.Len() != 0 {
+		t.Fatalf("unexpected audit output: %s", logBuf.String())
+	}
+}
+
+func TestCAPublicKeyMethodNotAllowed(t *testing.T) {
+	srv, _ := newTestServer(t, testPolicy, goodIdentity())
+	req := httptest.NewRequest(http.MethodPost, "/ca-public-key", nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d", rec.Code)
+	}
+}
+
 func TestSignOversizeBody(t *testing.T) {
 	srv, _ := newTestServer(t, testPolicy, goodIdentity())
 	big := strings.Repeat("x", MaxRequestBody+10)

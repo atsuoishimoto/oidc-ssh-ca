@@ -52,6 +52,14 @@ be writable by anyone but root — sshd trusts whatever it contains.
 sudo install -o root -g root -m 0644 oidc-ssh-ca.pub /etc/ssh/oidc-ssh-ca.pub
 ```
 
+If you provision servers away from the CA private key, fetch the same
+bytes from the running server's unauthenticated `GET /ca-public-key`
+endpoint instead of `print-ca-pub`:
+
+```bash
+curl -s https://ca.example.com/ca-public-key > oidc-ssh-ca.pub
+```
+
 ## 2. Authorize principals for each login user
 
 For every account a certificate may log into, list the allowed principals,

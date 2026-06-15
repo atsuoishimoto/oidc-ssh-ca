@@ -1,10 +1,14 @@
-# The /sign API
+# The HTTP API
 
-The server exposes a single endpoint. The request and response format is
-identical across every deployment (standalone HTTP, and Lambda behind the
-Lambda Web Adapter), so clients never care where the CA runs.
+The server exposes two endpoints: `POST /sign`, which issues a
+certificate, and `GET /ca-public-key`, which serves the CA public key.
+The request and response format is identical across every deployment
+(standalone HTTP, and Lambda behind the Lambda Web Adapter), so clients
+never care where the CA runs.
 
-## Request
+## POST /sign
+
+### Request
 
 ```text
 POST /sign
@@ -23,7 +27,7 @@ Content-Type: application/json
   expects.
 - The body is limited to 16 KiB.
 
-## Success response
+### Success response
 
 `200 OK` with `Content-Type: text/plain`; the body is the OpenSSH
 certificate, ready to be written to `<key>-cert.pub`:
@@ -32,7 +36,7 @@ certificate, ready to be written to `<key>-cert.pub`:
 ssh-ed25519-cert-v01@openssh.com AAAA...
 ```
 
-## Error responses
+### Error responses
 
 Errors are deliberately generic — a fixed message plus a request ID, as
 JSON. The real denial reason goes only to the server's audit log, so the
@@ -58,3 +62,24 @@ The request ID is also returned in the `X-Request-Id` response header.
 The status code distinguishes only the broad class (the caller needs to
 know whether to fix the request, fetch a new token, or call an operator);
 everything finer-grained is audit-log-only.
+
+## GET /ca-public-key
+
+Returns the CA public key in OpenSSH `authorized_keys` format — the exact
+bytes `print-ca-pub` emits — as `text/plain`:
+
+```text
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... 
+```
+
+The CA public key is not a secret: it is the value every target server
+trusts as `TrustedUserCAKeys`. This endpoint is therefore
+**unauthenticated** and exists purely as a convenience for provisioning —
+fetch the key without copying the `print-ca-pub` output or running the
+binary next to the private key:
+
+```sh
+curl -s https://ca.example.com/ca-public-key | sudo tee /etc/ssh/oidc-ssh-ca.pub
+```
+
+Only `GET` (and `HEAD`) are allowed; any other method returns `405`.
