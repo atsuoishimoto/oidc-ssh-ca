@@ -3,7 +3,7 @@
 # The image contains only the binary. The CA private key and policy.yaml
 # are never baked in — mount them or pass them as secrets at runtime.
 
-FROM golang:1.23 AS build
+FROM golang:1.26 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
