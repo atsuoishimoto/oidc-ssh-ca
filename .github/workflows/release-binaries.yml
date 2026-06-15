@@ -27,13 +27,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Build from the exact commit the release points at, not the
           # branch the workflow was dispatched from.
           ref: ${{ inputs.tag }}
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -86,7 +86,7 @@ jobs:
       # can verify a binary was built by this workflow from this repo with
       #   gh attestation verify <artifact> --repo <owner>/<repo>
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             dist/*.tar.gz
