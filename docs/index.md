@@ -102,3 +102,10 @@ operations
 building
 testing
 ```
+
+```{toctree}
+:maxdepth: 1
+:caption: Project
+
+history
+```
