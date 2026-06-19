@@ -262,7 +262,7 @@ func TestExplainRule(t *testing.T) {
 	}
 }
 
-// ownerRepoPolicy matches via the owner/repository split rather than a
+// ownerRepoPolicy matches via the owner/reponame split rather than a
 // claims_exact repository entry. testIdentity() has repository
 // "your-org/your-repo".
 const ownerRepoPolicy = `
@@ -274,7 +274,7 @@ rules:
         issuer: "https://token.actions.githubusercontent.com"
         audience: "ssh-ca-prod"
         owner: "your-org"
-        repository: "your-repo"
+        reponame: "your-repo"
     certificate:
       principals: ["gha-prod-deploy"]
       valid_for_seconds: 600
@@ -287,8 +287,8 @@ func TestParseOwnerRepository(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	m := p.Rules[0].Match.JWT
-	if m.Owner != "your-org" || m.Repository != "your-repo" {
-		t.Fatalf("owner=%q repository=%q", m.Owner, m.Repository)
+	if m.Owner != "your-org" || m.RepoName != "your-repo" {
+		t.Fatalf("owner=%q reponame=%q", m.Owner, m.RepoName)
 	}
 }
 
@@ -301,9 +301,9 @@ func TestParseOwnerRepositoryRejectsSlash(t *testing.T) {
 		{"owner with slash", func(s string) string {
 			return strings.Replace(s, `owner: "your-org"`, `owner: "your-org/your-repo"`, 1)
 		}, "match.jwt.owner"},
-		{"repository with slash", func(s string) string {
-			return strings.Replace(s, `repository: "your-repo"`, `repository: "your-org/your-repo"`, 1)
-		}, "match.jwt.repository"},
+		{"reponame with slash", func(s string) string {
+			return strings.Replace(s, `reponame: "your-repo"`, `reponame: "your-org/your-repo"`, 1)
+		}, "match.jwt.reponame"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -325,9 +325,9 @@ func TestEvaluateOwnerRepository(t *testing.T) {
 			src = strings.Replace(src, `owner: "your-org"`, `owner: "`+owner+`"`, 1)
 		}
 		if repo == "" {
-			src = strings.Replace(src, "        repository: \"your-repo\"\n", "", 1)
+			src = strings.Replace(src, "        reponame: \"your-repo\"\n", "", 1)
 		} else {
-			src = strings.Replace(src, `repository: "your-repo"`, `repository: "`+repo+`"`, 1)
+			src = strings.Replace(src, `reponame: "your-repo"`, `reponame: "`+repo+`"`, 1)
 		}
 		p, err := Parse([]byte(src))
 		if err != nil {
@@ -346,7 +346,7 @@ func TestEvaluateOwnerRepository(t *testing.T) {
 			t.Fatalf("expected allow, got %+v", d)
 		}
 	})
-	t.Run("repository only matches any owner", func(t *testing.T) {
+	t.Run("reponame only matches any owner", func(t *testing.T) {
 		if d := parse(t, "", "your-repo").Evaluate(testIdentity()); !d.Allowed {
 			t.Fatalf("expected allow, got %+v", d)
 		}
@@ -356,9 +356,9 @@ func TestEvaluateOwnerRepository(t *testing.T) {
 			t.Fatalf("owner mismatch must deny")
 		}
 	})
-	t.Run("repository mismatch denies", func(t *testing.T) {
+	t.Run("reponame mismatch denies", func(t *testing.T) {
 		if d := parse(t, "your-org", "other-repo").Evaluate(testIdentity()); d.Allowed {
-			t.Fatalf("repository mismatch must deny")
+			t.Fatalf("reponame mismatch must deny")
 		}
 	})
 	t.Run("missing repository claim denies", func(t *testing.T) {
@@ -382,7 +382,7 @@ func TestExplainRuleOwnerRepository(t *testing.T) {
 	id := testIdentity()
 	id.Claims["repository"] = "your-org/other-repo"
 	ok, why := ExplainRule(&p.Rules[0], id)
-	if ok || !strings.Contains(why, "repository mismatch") {
+	if ok || !strings.Contains(why, "reponame mismatch") {
 		t.Fatalf("ok=%v why=%q", ok, why)
 	}
 }

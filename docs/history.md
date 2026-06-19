@@ -1,5 +1,16 @@
 # Release history
 
+## Unreleased
+
+### Changed
+
+- **Renamed `match.jwt.repository` to `match.jwt.reponame`.** The policy field
+  that matches the repo-name half of the GitHub Actions `repository` claim is
+  now `reponame`, to avoid confusion with the full `owner/repo` `repository`
+  claim itself (e.g. as used in `claims_exact`). This is a breaking change:
+  policies using `match.jwt.repository` must be updated. `match.jwt.owner` is
+  unchanged.
+
 ## 0.3.0 (2026-06-19)
 
 ### Added

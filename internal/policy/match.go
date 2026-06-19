@@ -76,7 +76,7 @@ func ruleMatches(r *Rule, id *Identity) bool {
 	if !contains(id.Audiences, m.Audience) {
 		return false
 	}
-	if m.Owner != "" || m.Repository != "" {
+	if m.Owner != "" || m.RepoName != "" {
 		repo, ok := id.Claims["repository"].(string)
 		if !ok {
 			return false
@@ -88,7 +88,7 @@ func ruleMatches(r *Rule, id *Identity) bool {
 		if m.Owner != "" && m.Owner != owner {
 			return false
 		}
-		if m.Repository != "" && m.Repository != name {
+		if m.RepoName != "" && m.RepoName != name {
 			return false
 		}
 	}
@@ -128,7 +128,7 @@ func ExplainRule(r *Rule, id *Identity) (bool, string) {
 	if !contains(id.Audiences, m.Audience) {
 		return false, fmt.Sprintf("audience mismatch: policy wants %q, token has %v", m.Audience, id.Audiences)
 	}
-	if m.Owner != "" || m.Repository != "" {
+	if m.Owner != "" || m.RepoName != "" {
 		raw, present := id.Claims["repository"]
 		if !present {
 			return false, "claim \"repository\" is not present in the token"
@@ -144,8 +144,8 @@ func ExplainRule(r *Rule, id *Identity) (bool, string) {
 		if m.Owner != "" && m.Owner != owner {
 			return false, fmt.Sprintf("owner mismatch: policy wants %q, token has %q", m.Owner, owner)
 		}
-		if m.Repository != "" && m.Repository != name {
-			return false, fmt.Sprintf("repository mismatch: policy wants %q, token has %q", m.Repository, name)
+		if m.RepoName != "" && m.RepoName != name {
+			return false, fmt.Sprintf("reponame mismatch: policy wants %q, token has %q", m.RepoName, name)
 		}
 	}
 	for claim, want := range m.ClaimsExact {
