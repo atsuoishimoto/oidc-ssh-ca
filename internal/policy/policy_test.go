@@ -261,3 +261,128 @@ func TestExplainRule(t *testing.T) {
 		t.Fatalf("ok=%v why=%q", ok, why)
 	}
 }
+
+// ownerRepoPolicy matches via the owner/repository split rather than a
+// claims_exact repository entry. testIdentity() has repository
+// "your-org/your-repo".
+const ownerRepoPolicy = `
+version: 1
+rules:
+  - name: "prod-deploy"
+    match:
+      jwt:
+        issuer: "https://token.actions.githubusercontent.com"
+        audience: "ssh-ca-prod"
+        owner: "your-org"
+        repository: "your-repo"
+    certificate:
+      principals: ["gha-prod-deploy"]
+      valid_for_seconds: 600
+      key_id_template: "gha:${repository}:${run_id}:${run_attempt}"
+`
+
+func TestParseOwnerRepository(t *testing.T) {
+	p, err := Parse([]byte(ownerRepoPolicy))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	m := p.Rules[0].Match.JWT
+	if m.Owner != "your-org" || m.Repository != "your-repo" {
+		t.Fatalf("owner=%q repository=%q", m.Owner, m.Repository)
+	}
+}
+
+func TestParseOwnerRepositoryRejectsSlash(t *testing.T) {
+	cases := []struct {
+		name     string
+		mutate   func(string) string
+		contains string
+	}{
+		{"owner with slash", func(s string) string {
+			return strings.Replace(s, `owner: "your-org"`, `owner: "your-org/your-repo"`, 1)
+		}, "match.jwt.owner"},
+		{"repository with slash", func(s string) string {
+			return strings.Replace(s, `repository: "your-repo"`, `repository: "your-org/your-repo"`, 1)
+		}, "match.jwt.repository"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Parse([]byte(tc.mutate(ownerRepoPolicy)))
+			if err == nil || !strings.Contains(err.Error(), tc.contains) {
+				t.Fatalf("expected error containing %q, got %v", tc.contains, err)
+			}
+		})
+	}
+}
+
+func TestEvaluateOwnerRepository(t *testing.T) {
+	parse := func(t *testing.T, owner, repo string) *Policy {
+		t.Helper()
+		src := ownerRepoPolicy
+		if owner == "" {
+			src = strings.Replace(src, "        owner: \"your-org\"\n", "", 1)
+		} else {
+			src = strings.Replace(src, `owner: "your-org"`, `owner: "`+owner+`"`, 1)
+		}
+		if repo == "" {
+			src = strings.Replace(src, "        repository: \"your-repo\"\n", "", 1)
+		} else {
+			src = strings.Replace(src, `repository: "your-repo"`, `repository: "`+repo+`"`, 1)
+		}
+		p, err := Parse([]byte(src))
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		return p
+	}
+
+	t.Run("both match", func(t *testing.T) {
+		if d := parse(t, "your-org", "your-repo").Evaluate(testIdentity()); !d.Allowed {
+			t.Fatalf("expected allow, got %+v", d)
+		}
+	})
+	t.Run("owner only matches any repo", func(t *testing.T) {
+		if d := parse(t, "your-org", "").Evaluate(testIdentity()); !d.Allowed {
+			t.Fatalf("expected allow, got %+v", d)
+		}
+	})
+	t.Run("repository only matches any owner", func(t *testing.T) {
+		if d := parse(t, "", "your-repo").Evaluate(testIdentity()); !d.Allowed {
+			t.Fatalf("expected allow, got %+v", d)
+		}
+	})
+	t.Run("owner mismatch denies", func(t *testing.T) {
+		if d := parse(t, "other-org", "your-repo").Evaluate(testIdentity()); d.Allowed {
+			t.Fatalf("owner mismatch must deny")
+		}
+	})
+	t.Run("repository mismatch denies", func(t *testing.T) {
+		if d := parse(t, "your-org", "other-repo").Evaluate(testIdentity()); d.Allowed {
+			t.Fatalf("repository mismatch must deny")
+		}
+	})
+	t.Run("missing repository claim denies", func(t *testing.T) {
+		id := testIdentity()
+		delete(id.Claims, "repository")
+		if d := parse(t, "your-org", "your-repo").Evaluate(id); d.Allowed {
+			t.Fatalf("absent repository claim must deny")
+		}
+	})
+	t.Run("repository claim without slash denies", func(t *testing.T) {
+		id := testIdentity()
+		id.Claims["repository"] = "noslash"
+		if d := parse(t, "your-org", "your-repo").Evaluate(id); d.Allowed {
+			t.Fatalf("repository claim without '/' must deny")
+		}
+	})
+}
+
+func TestExplainRuleOwnerRepository(t *testing.T) {
+	p, _ := Parse([]byte(ownerRepoPolicy))
+	id := testIdentity()
+	id.Claims["repository"] = "your-org/other-repo"
+	ok, why := ExplainRule(&p.Rules[0], id)
+	if ok || !strings.Contains(why, "repository mismatch") {
+		t.Fatalf("ok=%v why=%q", ok, why)
+	}
+}
