@@ -25,9 +25,8 @@
   1.26), `github.com/coreos/go-oidc/v3` to 3.18.0, `golang.org/x/*` to 0.53.0,
   and the pinned GitHub Actions.
 
-Full diff: [`0.2.0...0.3.0`](https://github.com/atsuoishimoto/oidc-ssh-ca/compare/0.2.0...0.3.0)
 
-## 0.2.0
+## 0.2.0  (2026-06-15)
 
 - **Certificate restrictions in policy.** Rules can now emit `force_command`
   (the target runs only this command) and `source_address` (a CIDR allowlist
