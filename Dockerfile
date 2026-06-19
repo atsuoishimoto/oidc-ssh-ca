@@ -8,7 +8,10 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /oidc-ssh-ca ./cmd/oidc-ssh-ca
+# VERSION is optional; the release workflow passes the release tag so the
+# version is baked into the binary (matching the released binaries).
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /oidc-ssh-ca ./cmd/oidc-ssh-ca
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /oidc-ssh-ca /oidc-ssh-ca
