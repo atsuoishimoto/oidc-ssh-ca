@@ -28,11 +28,11 @@ rules:
       jwt:
         issuer: "https://token.actions.githubusercontent.com"
         audience: "ssh-ca-prod"
-        # owner and repository are the two halves of the `repository` claim
+        # owner and reponame are the two halves of the `repository` claim
         # (owner/repo), split on the "/". Either may be omitted to leave it
         # unconstrained (e.g. set only owner to allow any repo under the org).
         owner: "your-org"
-        repository: "your-repo"
+        reponame: "your-repo"
         claims_exact:
           ref: "refs/heads/main"
           # Only present when the job declares `environment:`.

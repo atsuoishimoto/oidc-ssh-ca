@@ -77,7 +77,7 @@ type Match struct {
 // A claim referenced in ClaimsExact that is absent from the token makes
 // the match fail (deny).
 //
-// Owner and Repository are the two halves of the GitHub Actions
+// Owner and RepoName are the two halves of the GitHub Actions
 // `repository` claim (`owner/repo`), split on the "/". Each is optional;
 // an empty field is no constraint. When either is set, a token whose
 // `repository` claim is absent or has no "/" fails the match.
@@ -87,9 +87,9 @@ type JWTMatch struct {
 	// Owner matches the portion of the `repository` claim before the "/"
 	// (the org/user). Empty means no constraint.
 	Owner string `yaml:"owner"`
-	// Repository matches the portion of the `repository` claim after the
+	// RepoName matches the portion of the `repository` claim after the
 	// "/" (the repo name). Empty means no constraint.
-	Repository  string            `yaml:"repository"`
+	RepoName    string            `yaml:"reponame"`
 	ClaimsExact map[string]string `yaml:"claims_exact"`
 }
 
@@ -249,8 +249,8 @@ func (p *Policy) Validate() error {
 		if strings.Contains(m.Owner, "/") {
 			return fmt.Errorf("policy: %s: match.jwt.owner %q must not contain '/'", where, m.Owner)
 		}
-		if strings.Contains(m.Repository, "/") {
-			return fmt.Errorf("policy: %s: match.jwt.repository %q must not contain '/'", where, m.Repository)
+		if strings.Contains(m.RepoName, "/") {
+			return fmt.Errorf("policy: %s: match.jwt.reponame %q must not contain '/'", where, m.RepoName)
 		}
 		for claim, v := range m.ClaimsExact {
 			if claim == "" {
