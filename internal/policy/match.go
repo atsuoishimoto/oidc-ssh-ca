@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"strings"
 )
 
 // Identity is a verified caller identity. Claims hold the verified JWT
@@ -75,6 +76,22 @@ func ruleMatches(r *Rule, id *Identity) bool {
 	if !contains(id.Audiences, m.Audience) {
 		return false
 	}
+	if m.Owner != "" || m.Repository != "" {
+		repo, ok := id.Claims["repository"].(string)
+		if !ok {
+			return false
+		}
+		owner, name, found := strings.Cut(repo, "/")
+		if !found {
+			return false
+		}
+		if m.Owner != "" && m.Owner != owner {
+			return false
+		}
+		if m.Repository != "" && m.Repository != name {
+			return false
+		}
+	}
 	for claim, want := range m.ClaimsExact {
 		got, ok := id.Claims[claim].(string)
 		// A referenced claim that is absent or non-string fails the
@@ -110,6 +127,26 @@ func ExplainRule(r *Rule, id *Identity) (bool, string) {
 	}
 	if !contains(id.Audiences, m.Audience) {
 		return false, fmt.Sprintf("audience mismatch: policy wants %q, token has %v", m.Audience, id.Audiences)
+	}
+	if m.Owner != "" || m.Repository != "" {
+		raw, present := id.Claims["repository"]
+		if !present {
+			return false, "claim \"repository\" is not present in the token"
+		}
+		repo, ok := raw.(string)
+		if !ok {
+			return false, "claim \"repository\" is not a string"
+		}
+		owner, name, found := strings.Cut(repo, "/")
+		if !found {
+			return false, fmt.Sprintf("claim %q %q has no '/' to split into owner/repository", "repository", repo)
+		}
+		if m.Owner != "" && m.Owner != owner {
+			return false, fmt.Sprintf("owner mismatch: policy wants %q, token has %q", m.Owner, owner)
+		}
+		if m.Repository != "" && m.Repository != name {
+			return false, fmt.Sprintf("repository mismatch: policy wants %q, token has %q", m.Repository, name)
+		}
 	}
 	for claim, want := range m.ClaimsExact {
 		raw, present := id.Claims[claim]

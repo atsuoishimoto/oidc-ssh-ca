@@ -151,6 +151,26 @@ audience is what the GitHub Actions workflow requests
 audience keeps a token requested for one from ever matching rules meant
 for another.
 
+### `match.jwt.owner` and `match.jwt.repository`
+
+Optional strings. Both are halves of the GitHub Actions `repository` claim
+(`owner/repo`), split on the `/`: `owner` matches the part before the slash
+(the org/user), `repository` matches the part after it (the repo name). Each
+is independent — set both to pin an exact repo, or only one to leave the other
+unconstrained (e.g. `owner: "your-org"` alone allows any repo under the org).
+An omitted field is no constraint.
+
+```yaml
+jwt:
+  owner: "your-org"        # any repo under your-org
+  repository: "your-repo"  # any owner's repo literally named your-repo
+```
+
+Neither value may contain `/` (a startup validation error). When either is
+set, a token whose `repository` claim is absent or has no `/` fails the match.
+If you prefer to pin the full `owner/repo` as a single exact string, use
+`claims_exact: { repository: "your-org/your-repo" }` instead.
+
 ### `match.jwt.claims_exact`
 
 Optional mapping of claim name → expected string value. Every listed
