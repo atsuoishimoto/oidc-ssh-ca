@@ -26,3 +26,19 @@
   and the pinned GitHub Actions.
 
 Full diff: [`0.2.0...0.3.0`](https://github.com/atsuoishimoto/oidc-ssh-ca/compare/0.2.0...0.3.0)
+
+## 0.2.0
+
+- **Certificate restrictions in policy.** Rules can now emit `force_command`
+  (the target runs only this command) and `source_address` (a CIDR allowlist
+  of where the certificate may be used). Both are baked into the certificate
+  by the CA, so they apply on every target server without per-host
+  `AuthorizedPrincipalsFile` options.
+- **Hardened validation.** Key ID templates and certificate principals are now
+  checked against a strict allowlist at policy load time (and again at
+  issuance), rejecting newlines, control characters, and unbounded values that
+  could be injected into sshd logs or the audit trail.
+- **Supply-chain hardening.** CI gained `govulncheck` and a CodeQL workflow,
+  releases emit SLSA build provenance, and vulnerable dependencies were bumped.
+- **Simpler Lambda support.** The Lambda-specific code was removed; the binary
+  now runs the ordinary `serve` HTTP server behind the AWS Lambda Web Adapter.
