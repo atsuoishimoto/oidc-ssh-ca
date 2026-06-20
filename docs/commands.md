@@ -10,6 +10,25 @@ oidc-ssh-ca print-ca-pub [--ca-key-file PATH]
 oidc-ssh-ca version
 ```
 
+## Run without installing (Docker)
+
+You don't have to build or install the binary to run a subcommand. The
+released image
+[`ghcr.io/atsuoishimoto/oidc-ssh-ca`](https://github.com/atsuoishimoto/oidc-ssh-ca/pkgs/container/oidc-ssh-ca)
+has the binary as its entrypoint, so any subcommand and its arguments go
+straight after the image name. Mount the directory holding your files and
+reference them by their in-container path. For example, to lint a policy in
+the current directory:
+
+```bash
+docker run -v "$(pwd)":/src ghcr.io/atsuoishimoto/oidc-ssh-ca \
+  check-config /src/policy.yaml
+```
+
+This is handy in CI or for one-off checks. Pin a release tag (e.g.
+`ghcr.io/atsuoishimoto/oidc-ssh-ca:0.1.0`) instead of the default `latest`
+for reproducible runs.
+
 ## serve
 
 Runs the HTTP server.
