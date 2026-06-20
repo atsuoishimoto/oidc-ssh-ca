@@ -5,11 +5,17 @@ endpoint, scales to zero between CI runs (typically staying within the free
 tier), and stores the CA key in Secret Manager. There are no state files or
 load balancers to manage.
 
-The container image is built from the repository
-[`Dockerfile`](https://github.com/atsuoishimoto/oidc-ssh-ca/blob/main/Dockerfile)
-and contains only the binary. The policy and the CA key are both delivered
-through Secret Manager: the key as an environment variable, the policy as a
-mounted file.
+The deployment uses the prebuilt
+[`ghcr.io/atsuoishimoto/oidc-ssh-ca`](https://github.com/atsuoishimoto/oidc-ssh-ca/pkgs/container/oidc-ssh-ca)
+image (distroless, binary only) — nothing to build. The policy and the CA key
+are both delivered through Secret Manager: the key as an environment variable,
+the policy as a mounted file.
+
+The steps below are also packaged as runnable scripts in
+[`examples/cloud-run/`](https://github.com/atsuoishimoto/oidc-ssh-ca/tree/main/examples/cloud-run)
+(`deploy.sh`, `update-policy.sh`). They follow this same flow — read them once,
+then prefer them so a deploy is a single command. They only need `ca_key` and
+`policy.yaml` in the working directory (no repository checkout required).
 
 ## 1. Create the CA key and policy
 
@@ -49,18 +55,41 @@ for s in oidc-ssh-ca-key oidc-ssh-ca-policy; do
 done
 ```
 
-## 3. Deploy
+## 3. Point Artifact Registry at ghcr.io
 
-From the repository root (Cloud Build uses the `Dockerfile` automatically):
+Cloud Run cannot pull directly from ghcr.io, so create an Artifact Registry
+*remote repository* that proxies and caches it (one-time; the image is public,
+so no upstream credentials are needed):
+
+```bash
+gcloud artifacts repositories create ghcr \
+  --repository-format=docker \
+  --location=asia-northeast1 \
+  --mode=remote-repository \
+  --remote-docker-repo=https://ghcr.io
+```
+
+The image is then addressable at
+`asia-northeast1-docker.pkg.dev/${PROJECT_ID}/ghcr/atsuoishimoto/oidc-ssh-ca:latest`
+(pin a release tag instead of `latest` in production).
+
+## 4. Deploy
 
 ```bash
 gcloud run deploy oidc-ssh-ca \
-  --source . \
+  --image "asia-northeast1-docker.pkg.dev/${PROJECT_ID}/ghcr/atsuoishimoto/oidc-ssh-ca:latest" \
   --region asia-northeast1 \
   --service-account "oidc-ssh-ca@${PROJECT_ID}.iam.gserviceaccount.com" \
   --allow-unauthenticated \
   --set-secrets "OIDC_SSH_CA_KEY=oidc-ssh-ca-key:latest,/etc/oidc-ssh-ca/policy.yaml=oidc-ssh-ca-policy:latest" \
   --max-instances 1
+```
+
+Or run the bundled script, which performs everything above (secrets, service
+account, IAM, remote repository, deploy) and is safe to re-run:
+
+```bash
+./examples/cloud-run/deploy.sh   # SERVICE / REGION overridable via env vars
 ```
 
 Notes:
@@ -89,7 +118,16 @@ resolved when a revision starts, so a deploy is required either way):
 
 ```bash
 gcloud secrets versions add oidc-ssh-ca-policy --data-file=policy.yaml
-gcloud run deploy oidc-ssh-ca --source . --region asia-northeast1
+gcloud run deploy oidc-ssh-ca \
+  --image "asia-northeast1-docker.pkg.dev/${PROJECT_ID}/ghcr/atsuoishimoto/oidc-ssh-ca:latest" \
+  --region asia-northeast1
+```
+
+Or use the bundled script (it also runs `check-config` first if the binary is
+on `PATH`):
+
+```bash
+./examples/cloud-run/update-policy.sh
 ```
 
 There is no `SIGHUP` reload on Cloud Run; revisions are the reload mechanism.

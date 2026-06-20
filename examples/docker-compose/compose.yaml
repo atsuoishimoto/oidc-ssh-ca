@@ -13,7 +13,9 @@
 
 services:
   oidc-ssh-ca:
-    build: ../..
+    # Prebuilt distroless image (binary only). Pin a release tag in
+    # production, e.g. ghcr.io/atsuoishimoto/oidc-ssh-ca:0.1.0.
+    image: ghcr.io/atsuoishimoto/oidc-ssh-ca:latest
     command: ["serve", "--config", "/etc/oidc-ssh-ca/policy.yaml"]
     environment:
       OIDC_SSH_CA_KEY_FILE: /etc/oidc-ssh-ca/ca_key
