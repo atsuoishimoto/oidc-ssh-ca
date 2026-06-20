@@ -44,9 +44,10 @@ func cmdCheckConfig(args []string) error {
 					"rule %q: key_id_template references claim %q, which is not a known GitHub Actions claim", r.Name, v))
 			}
 		}
-		if len(r.Match.JWT.ClaimsExact) == 0 {
+		m := r.Match.JWT
+		if len(m.ClaimsExact) == 0 && m.Owner == "" && m.RepoName == "" {
 			warnings = append(warnings, fmt.Sprintf(
-				"rule %q: match has no claims_exact — any token from this issuer/audience will match", r.Name))
+				"rule %q: match has no owner, reponame, or claims_exact — any token from this issuer/audience will match", r.Name))
 		}
 	}
 
