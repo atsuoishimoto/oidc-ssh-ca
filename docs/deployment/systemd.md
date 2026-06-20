@@ -10,9 +10,14 @@ credential visible only to the service.
 
 ## Install
 
+The binary has no runtime dependencies, so the simplest way to obtain it is
+the Go toolchain — `go install` builds it and drops it in `$(go env GOPATH)/bin`
+(usually `~/go/bin`); move that onto a system path:
+
 ```bash
 # The binary
-install -m 0755 oidc-ssh-ca /usr/local/bin/oidc-ssh-ca
+go install github.com/atsuoishimoto/oidc-ssh-ca/cmd/oidc-ssh-ca@latest
+sudo install -m 0755 "$(go env GOPATH)/bin/oidc-ssh-ca" /usr/local/bin/oidc-ssh-ca
 
 # Configuration and key
 mkdir -p /etc/oidc-ssh-ca

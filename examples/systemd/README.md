@@ -11,8 +11,12 @@ deployment target.
 
 ## Install
 
+Get the binary with the Go toolchain (`go install` builds it into
+`$(go env GOPATH)/bin`), then move it onto a system path:
+
 ```sh
-install -m 0755 oidc-ssh-ca /usr/local/bin/oidc-ssh-ca
+go install github.com/atsuoishimoto/oidc-ssh-ca/cmd/oidc-ssh-ca@latest
+install -m 0755 "$(go env GOPATH)/bin/oidc-ssh-ca" /usr/local/bin/oidc-ssh-ca
 install -D -m 0644 policy.yaml /etc/oidc-ssh-ca/policy.yaml
 install -D -m 0600 ca_key /etc/oidc-ssh-ca/ca_key       # owned by root
 cp oidc-ssh-ca.service /etc/systemd/system/

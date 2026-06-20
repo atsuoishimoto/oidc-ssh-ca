@@ -21,16 +21,27 @@ The zip contains the binary, the `run.sh` startup script (the LWA handler), and
 the policy. The policy is loaded once at cold start from `policy.yaml` in the
 zip. `run.sh` is in the repository at `examples/lambda/run.sh`.
 
+The `linux/arm64` binary comes from the prebuilt
+[`ghcr.io/atsuoishimoto/oidc-ssh-ca`](https://github.com/atsuoishimoto/oidc-ssh-ca/pkgs/container/oidc-ssh-ca)
+image — no Go toolchain or cross-compilation needed (pin a release tag instead
+of `latest` in production). `docker cp` pulls the binary straight out of the
+image; the container is never started:
+
 ```bash
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
-  go build -trimpath -ldflags="-s -w" \
-  -o oidc-ssh-ca ./cmd/oidc-ssh-ca
+docker create --platform linux/arm64 --name oidc-ssh-ca-extract \
+  ghcr.io/atsuoishimoto/oidc-ssh-ca:latest
+docker cp oidc-ssh-ca-extract:/oidc-ssh-ca ./oidc-ssh-ca
+docker rm oidc-ssh-ca-extract
+
 cp examples/lambda/run.sh .
 zip lambda.zip oidc-ssh-ca run.sh policy.yaml
 ```
 
 `run.sh` must keep its executable bit inside the zip (creating the zip on
 Windows is a known way to lose it).
+
+If you have a Go toolchain and prefer to build from source instead, see
+[Building](../building.md#cross-compile) for the cross-compile command.
 
 ## 2. Create the execution role
 
