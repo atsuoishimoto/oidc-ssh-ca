@@ -7,9 +7,10 @@ nginx configuration.
 
 The complete example lives in
 [`examples/docker-compose/`](https://github.com/atsuoishimoto/oidc-ssh-ca/tree/main/examples/docker-compose):
-`compose.yaml` plus a two-line `Caddyfile`. The CA image is built from the
-repository `Dockerfile` (distroless, binary only); the policy and CA key are
-bind-mounted, never baked into the image.
+`compose.yaml` plus a two-line `Caddyfile`. The CA runs the prebuilt
+[`ghcr.io/atsuoishimoto/oidc-ssh-ca`](https://github.com/atsuoishimoto/oidc-ssh-ca/pkgs/container/oidc-ssh-ca)
+image (distroless, binary only — pin a release tag in production); the policy
+and CA key are bind-mounted, never baked into the image.
 
 ## Prerequisites
 
