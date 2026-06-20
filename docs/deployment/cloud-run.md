@@ -11,6 +11,12 @@ and contains only the binary. The policy and the CA key are both delivered
 through Secret Manager: the key as an environment variable, the policy as a
 mounted file.
 
+The steps below are also packaged as runnable scripts in
+[`examples/cloud-run/`](https://github.com/atsuoishimoto/oidc-ssh-ca/tree/main/examples/cloud-run)
+(`deploy.sh`, `update-policy.sh`). They follow this same flow — read them once,
+then prefer them so a deploy is a single command. Run them from the repository
+root with `ca_key` and `policy.yaml` in the working directory.
+
 ## 1. Create the CA key and policy
 
 ```bash
@@ -63,6 +69,13 @@ gcloud run deploy oidc-ssh-ca \
   --max-instances 1
 ```
 
+Or run the bundled script, which performs everything above (secrets, service
+account, IAM, deploy) and is safe to re-run:
+
+```bash
+./examples/cloud-run/deploy.sh   # SERVICE / REGION overridable via env vars
+```
+
 Notes:
 
 - `--allow-unauthenticated` is intentional: `/sign` authenticates callers by
@@ -90,6 +103,13 @@ resolved when a revision starts, so a deploy is required either way):
 ```bash
 gcloud secrets versions add oidc-ssh-ca-policy --data-file=policy.yaml
 gcloud run deploy oidc-ssh-ca --source . --region asia-northeast1
+```
+
+Or use the bundled script (it also runs `check-config` first if the binary is
+on `PATH`):
+
+```bash
+./examples/cloud-run/update-policy.sh
 ```
 
 There is no `SIGHUP` reload on Cloud Run; revisions are the reload mechanism.
