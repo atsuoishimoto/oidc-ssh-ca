@@ -1,0 +1,102 @@
+# Build the distroless Docker image and push it to the GitHub Container
+# Registry (ghcr.io) for an existing release.
+#
+# Trigger this from the Actions tab (workflow_dispatch) and pass the tag
+# of a release that already exists (for example v0.1.0). The job checks
+# out that tag, builds the multi-arch image from the repository Dockerfile
+# with the version baked in, and pushes it to
+#   ghcr.io/<owner>/<repo>:<version>  and  :latest
+# Re-running for the same tag overwrites the pushed tags, so it is safe to
+# run again.
+
+name: Release Docker image
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build the image from (e.g. v0.1.0)"
+        required: true
+      latest:
+        description: "Also update the ':latest' tag (only do this for the newest release)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read       # required to check out the repository
+  packages: write      # required to push the image to ghcr.io
+  id-token: write      # required for keyless signing of the provenance
+  attestations: write  # required to record the build provenance
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Build from the exact commit the release points at, not the
+          # branch the workflow was dispatched from.
+          ref: ${{ inputs.tag }}
+
+      - name: Set image version
+        id: version
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"   # strip a leading v
+
+      - name: Verify the release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release view "${{ inputs.tag }}" --repo "$GITHUB_REPOSITORY" >/dev/null
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Compute image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest,enable=${{ inputs.latest }}
+
+      # Build the same distroless image as the local Dockerfile, for both
+      # amd64 and arm64 (matching the released binaries), and push it.
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+
+      # Generate SLSA build provenance for the pushed image. The
+      # attestation is signed keyless via Sigstore (using the id-token
+      # above) and recorded in the public transparency log, so consumers
+      # can verify the image was built by this workflow from this repo with
+      #   gh attestation verify oci://ghcr.io/<owner>/<repo>:<version> \
+      #     --repo <owner>/<repo>
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
