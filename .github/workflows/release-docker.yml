@@ -17,6 +17,10 @@ on:
       tag:
         description: "Existing release tag to build the image from (e.g. v0.1.0)"
         required: true
+      latest:
+        description: "Also update the ':latest' tag (only do this for the newest release)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read       # required to check out the repository
@@ -68,7 +72,7 @@ jobs:
           images: ${{ env.IMAGE }}
           tags: |
             type=raw,value=${{ steps.version.outputs.version }}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ inputs.latest }}
 
       # Build the same distroless image as the local Dockerfile, for both
       # amd64 and arm64 (matching the released binaries), and push it.
