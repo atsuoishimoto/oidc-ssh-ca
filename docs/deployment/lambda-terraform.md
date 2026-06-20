@@ -17,13 +17,18 @@ and encrypted.
 
 ## 1. Build the zip
 
-Same as the CLI deployment — Terraform deploys the artifact, it does not
-build it:
+Same as the [CLI deployment](lambda-cli.md#1-build-the-zip) — Terraform deploys
+the artifact, it does not build it. The `linux/arm64` binary is pulled from the
+prebuilt
+[`ghcr.io/atsuoishimoto/oidc-ssh-ca`](https://github.com/atsuoishimoto/oidc-ssh-ca/pkgs/container/oidc-ssh-ca)
+image (pin a release tag instead of `latest` in production):
 
 ```bash
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
-  go build -trimpath -ldflags="-s -w" \
-  -o oidc-ssh-ca ./cmd/oidc-ssh-ca
+docker create --platform linux/arm64 --name oidc-ssh-ca-extract \
+  ghcr.io/atsuoishimoto/oidc-ssh-ca:latest
+docker cp oidc-ssh-ca-extract:/oidc-ssh-ca ./oidc-ssh-ca
+docker rm oidc-ssh-ca-extract
+
 cp examples/lambda/run.sh .
 zip lambda.zip oidc-ssh-ca run.sh policy.yaml
 ```
