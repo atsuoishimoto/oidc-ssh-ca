@@ -6,10 +6,16 @@ oidc_ssh_ca_public_key: ""
 # Login users that accept certificates, and the certificate principals
 # allowed to log in as each of them. Required, must not be empty.
 #
+# Each entry also accepts two optional booleans (both default to false):
+#   create: true  -> create the login account on the target host
+#   sudo:   true  -> grant passwordless sudo (NOPASSWD:ALL)
+#
 # oidc_ssh_ca_users:
 #   - user: deploy
 #     principals:
 #       - gha-prod-deploy
+#     create: true
+#     sudo: true
 oidc_ssh_ca_users: []
 
 # Where the CA public key is installed on the target server.
@@ -20,6 +26,10 @@ oidc_ssh_ca_principals_dir: /etc/ssh/auth_principals
 
 # The sshd_config fragment the role manages.
 oidc_ssh_ca_sshd_config_path: /etc/ssh/sshd_config.d/oidc-ssh-ca.conf
+
+# Directory holding the per-user sudoers files this role manages.
+# One file per user with `sudo: true`, named oidc-ssh-ca-<user>.
+oidc_ssh_ca_sudoers_dir: /etc/sudoers.d
 
 # Disable password and keyboard-interactive authentication for the
 # certificate users (inside their Match blocks only).

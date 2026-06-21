@@ -17,6 +17,8 @@
         - user: deploy
           principals:
             - gha-prod-deploy
+          create: true
+          sudo: true
         - user: staging
           principals:
             - gha-staging-deploy

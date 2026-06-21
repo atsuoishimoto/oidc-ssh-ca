@@ -17,12 +17,24 @@
       - item.user | length > 0
       - item.principals is defined
       - item.principals | length > 0
+      - item.create is not defined or item.create is boolean
+      - item.sudo is not defined or item.sudo is boolean
     fail_msg: >-
       Each oidc_ssh_ca_users entry needs a non-empty "user" and at
-      least one principal.
+      least one principal; the optional "create" and "sudo" fields must
+      be booleans.
   loop: "{{ oidc_ssh_ca_users }}"
   loop_control:
     label: "{{ item.user | default('<missing user>') }}"
+
+- name: Create login users
+  ansible.builtin.user:
+    name: "{{ item.user }}"
+    state: present
+  loop: "{{ oidc_ssh_ca_users }}"
+  loop_control:
+    label: "{{ item.user }}"
+  when: item.create | default(false)
 
 - name: Check that sshd_config includes sshd_config.d
   ansible.builtin.command:
@@ -65,6 +77,28 @@
   loop_control:
     label: "{{ item.user }}"
   notify: Reload sshd
+
+- name: Grant passwordless sudo to certificate users
+  ansible.builtin.copy:
+    content: "{{ item.user }} ALL=(ALL) NOPASSWD:ALL\n"
+    dest: "{{ oidc_ssh_ca_sudoers_dir }}/oidc-ssh-ca-{{ item.user }}"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+  loop: "{{ oidc_ssh_ca_users }}"
+  loop_control:
+    label: "{{ item.user }}"
+  when: item.sudo | default(false)
+
+- name: Remove sudo for certificate users not granted it
+  ansible.builtin.file:
+    path: "{{ oidc_ssh_ca_sudoers_dir }}/oidc-ssh-ca-{{ item.user }}"
+    state: absent
+  loop: "{{ oidc_ssh_ca_users }}"
+  loop_control:
+    label: "{{ item.user }}"
+  when: not (item.sudo | default(false))
 
 - name: Install the sshd configuration fragment
   ansible.builtin.template:
