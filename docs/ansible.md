@@ -11,15 +11,19 @@ configure `oidc-ssh-ca` itself (for that, see
 On each host the role:
 
 1. installs the CA public key at `/etc/ssh/oidc-ssh-ca.pub`;
-2. creates `/etc/ssh/auth_principals/<user>` for every entry in
+2. creates the login account for every entry that sets `create: true`;
+3. creates `/etc/ssh/auth_principals/<user>` for every entry in
    `oidc_ssh_ca_users`, listing the certificate principals allowed to
    log in as that user;
-3. installs `/etc/ssh/sshd_config.d/oidc-ssh-ca.conf` with
+4. grants passwordless sudo (`NOPASSWD:ALL`) to every entry that sets
+   `sudo: true`, via `/etc/sudoers.d/oidc-ssh-ca-<user>`, and removes
+   that file for entries that do not;
+5. installs `/etc/ssh/sshd_config.d/oidc-ssh-ca.conf` with
    `TrustedUserCAKeys` and a `Match User` block per user;
-4. validates the configuration with `sshd -t` (the fragment when it is
+6. validates the configuration with `sshd -t` (the fragment when it is
    written, and the full configuration again before reloading — a broken
    config never takes effect);
-5. reloads sshd, only if something changed.
+7. reloads sshd, only if something changed.
 
 ## Requirements
 
@@ -53,6 +57,8 @@ own repository), then:
         - user: deploy
           principals:
             - gha-prod-deploy
+          create: true
+          sudo: true
         - user: staging
           principals:
             - gha-staging-deploy
@@ -68,7 +74,9 @@ A runnable copy of this playbook is at
 The principals must match `certificate.principals` in the CA's
 [policy](policy.md): a certificate logs in as `deploy` only if one of
 its principals appears in `/etc/ssh/auth_principals/deploy`. The login
-users themselves must already exist; the role does not create accounts.
+users must already exist unless the entry sets `create: true`, in which
+case the role creates the account (it only ever creates accounts, never
+removes them).
 
 With the example above, the role writes:
 
@@ -97,10 +105,11 @@ gha-prod-deploy
 | Variable | Default | Purpose |
 |---|---|---|
 | `oidc_ssh_ca_public_key` | — (required) | CA public key in OpenSSH format (`ssh-ed25519 AAAA...`) |
-| `oidc_ssh_ca_users` | — (required) | List of `{user, principals}` mappings |
+| `oidc_ssh_ca_users` | — (required) | List of `{user, principals}` mappings; each may add optional booleans `create` (create the account) and `sudo` (grant NOPASSWD sudo), both default `false` |
 | `oidc_ssh_ca_public_key_path` | `/etc/ssh/oidc-ssh-ca.pub` | Where the CA key is installed |
 | `oidc_ssh_ca_principals_dir` | `/etc/ssh/auth_principals` | Directory for per-user principals files |
 | `oidc_ssh_ca_sshd_config_path` | `/etc/ssh/sshd_config.d/oidc-ssh-ca.conf` | Managed sshd fragment |
+| `oidc_ssh_ca_sudoers_dir` | `/etc/sudoers.d` | Directory for the per-user sudoers files the role manages |
 | `oidc_ssh_ca_disable_password_auth` | `true` | Add `PasswordAuthentication no` and `KbdInteractiveAuthentication no` to each `Match User` block |
 | `oidc_ssh_ca_verify_include` | `true` | Fail if `sshd_config` does not include `sshd_config.d` |
 | `oidc_ssh_ca_sshd_binary` | `/usr/sbin/sshd` | Binary used for `sshd -t` validation |
@@ -113,10 +122,19 @@ gha-prod-deploy
 - `oidc_ssh_ca_disable_password_auth` only affects the listed users.
   Password logins for other accounts are untouched — disable them
   globally yourself if that is your policy.
+- `sudo: true` grants `NOPASSWD:ALL` precisely because password
+  authentication is disabled for these users, so a password-prompting
+  sudo rule would be unusable. Setting `sudo: false` (or omitting it) on
+  a still-listed user removes the managed
+  `/etc/sudoers.d/oidc-ssh-ca-<user>` file.
+- `create: true` only ever adds the account (`ansible.builtin.user` with
+  `state: present`); the role never deletes accounts. Created accounts
+  use the OS-default shell and home directory.
 - Removing a user from `oidc_ssh_ca_users` removes their `Match` block,
-  which is what sshd consults; the now-unreferenced principals file is
-  left behind and is inert. Delete it manually if you want a tidy
-  `/etc/ssh/auth_principals`.
+  which is what sshd consults; the now-unreferenced principals file and
+  any `/etc/sudoers.d/oidc-ssh-ca-<user>` file are left behind and inert.
+  Delete them manually if you want a tidy `/etc/ssh/auth_principals` and
+  `/etc/sudoers.d`.
 - [CA key rotation](operations.md) works through this role too:
   `TrustedUserCAKeys` may list several keys, so set
   `oidc_ssh_ca_public_key` to both public keys (one per line) during
