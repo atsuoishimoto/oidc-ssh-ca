@@ -1,16 +1,5 @@
 # Release history
 
-## Unreleased
-
-### Changed
-
-- **Renamed `match.jwt.repository` to `match.jwt.reponame`.** The policy field
-  that matches the repo-name half of the GitHub Actions `repository` claim is
-  now `reponame`, to avoid confusion with the full `owner/repo` `repository`
-  claim itself (e.g. as used in `claims_exact`). This is a breaking change:
-  policies using `match.jwt.repository` must be updated. `match.jwt.owner` is
-  unchanged.
-
 ## 0.3.0 (2026-06-19)
 
 ### Added
@@ -18,11 +7,11 @@
 - **`GET /ca-public-key` endpoint.** The server now serves the CA public key
   over HTTP, so a target server (or its configuration management) can fetch
   the key to populate `TrustedUserCAKeys` without copying it out of band.
-- **`match.jwt.owner` and `match.jwt.repository`.** A rule can now constrain
+- **`match.jwt.owner` and `match.jwt.reponame`.** A rule can now constrain
   the two halves of the GitHub Actions `repository` claim (`owner/repo`)
-  independently: `owner` matches the part before the `/`, `repository` the
+  independently: `owner` matches the part before the `/`, `reponame` the
   part after it. Either may be omitted to leave that half unconstrained — set
-  only `owner` to allow any repo under an org, or only `repository` to allow
+  only `owner` to allow any repo under an org, or only `reponame` to allow
   a given repo name under any owner. The generic `claims_exact` map is
   unchanged and can still pin the full `owner/repo` as a single exact string.
   Both fields reject a value containing `/` at startup, and a token whose
