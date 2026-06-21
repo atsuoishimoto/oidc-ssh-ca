@@ -18,4 +18,4 @@ See [`playbook.example.yml`](playbook.example.yml) for a complete
 playbook, and the full documentation (variables, behavior, manual
 alternative) at
 <https://oidc-ssh-ca.readthedocs.io/en/latest/ansible.html> (source:
-[`docs/ansible.md`](../docs/ansible.md)).
+[`docs/ansible.md`](../../docs/ansible.md)).

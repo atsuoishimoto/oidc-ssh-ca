@@ -43,9 +43,8 @@ internal/issuer/   # Signer abstraction + x/crypto/ssh implementation, CA key lo
 internal/oidc/     # JWT verification, JWKS cache
 internal/server/   # transport-agnostic Sign() pipeline + net/http transport
 internal/audit/    # slog-based audit logging
-examples/          # github-actions, policy, sshd, systemd
+examples/          # github-actions, policy, sshd, systemd, ansible (oidc_ssh_ca_trust role for target servers)
 terraform/         # AWS deployment modules (planned, Phase 3)
-ansible/           # oidc_ssh_ca_trust role for target servers (planned, Phase 2)
 ```
 
 The signing pipeline (validate body/key → verify JWT → match policy → expand key ID → sign) lives in `server.(*Server).Sign()`, which is transport-agnostic and performs all audit logging. The only transport is the net/http handler; add any new entry point the same way so the generic-error and audit guarantees stay in one place. **There is no Lambda-specific code.** On AWS Lambda the binary runs the ordinary `serve` HTTP server behind the AWS Lambda Web Adapter (LWA) layer, which converts Function URL events into `POST /sign` requests; the handler is `run.sh` (`examples/lambda/run.sh`) with `AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap`. There is no policy reload in Lambda — the policy loads at cold start from `policy.yaml` in the zip. Do not reintroduce a hand-written Lambda transport or the `aws-lambda-go` dependency.

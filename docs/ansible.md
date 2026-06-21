@@ -1,7 +1,7 @@
 # Configuring target servers with Ansible
 
 The `oidc_ssh_ca_trust` role, in
-[`ansible/roles/oidc_ssh_ca_trust`](https://github.com/atsuoishimoto/oidc-ssh-ca/tree/main/ansible/roles/oidc_ssh_ca_trust),
+[`examples/ansible/roles/oidc_ssh_ca_trust`](https://github.com/atsuoishimoto/oidc-ssh-ca/tree/main/examples/ansible/roles/oidc_ssh_ca_trust),
 automates the manual setup in
 [Configuring target servers](target-servers.md): making target servers
 trust the CA. It touches only the SSH server side — it does not deploy or
@@ -42,7 +42,7 @@ On each host the role:
 ## Usage
 
 Point Ansible at the role (for example with
-`ANSIBLE_ROLES_PATH=path/to/oidc-ssh-ca/ansible/roles`, a
+`ANSIBLE_ROLES_PATH=path/to/oidc-ssh-ca/examples/ansible/roles`, a
 `roles_path` entry in `ansible.cfg`, or by copying the role into your
 own repository), then:
 
@@ -69,7 +69,7 @@ ansible-playbook -i inventory.ini site.yml
 ```
 
 A runnable copy of this playbook is at
-[`ansible/playbook.example.yml`](https://github.com/atsuoishimoto/oidc-ssh-ca/blob/main/ansible/playbook.example.yml).
+[`examples/ansible/playbook.example.yml`](https://github.com/atsuoishimoto/oidc-ssh-ca/blob/main/examples/ansible/playbook.example.yml).
 
 The principals must match `certificate.principals` in the CA's
 [policy](policy.md): a certificate logs in as `deploy` only if one of
