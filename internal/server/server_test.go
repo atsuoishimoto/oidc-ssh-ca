@@ -135,6 +135,50 @@ func TestSignIssuesCertificate(t *testing.T) {
 	}
 }
 
+// defaultsPolicy sets valid_for_seconds, key_id_template, and source_address
+// only in the defaults block; the rule omits all three and must inherit them.
+const defaultsPolicy = `
+version: 1
+defaults:
+  valid_for_seconds: 300
+  key_id_template: "gha:${repository}:${run_id}"
+  source_address:
+    - "192.0.2.0/24"
+rules:
+  - name: "prod-deploy"
+    match:
+      jwt:
+        issuer: "https://token.actions.githubusercontent.com"
+        audience: "ssh-ca-prod"
+        claims_exact:
+          repository: "your-org/your-repo"
+          ref: "refs/heads/main"
+    certificate:
+      principals: ["gha-prod-deploy"]
+`
+
+func TestSignUsesDefaults(t *testing.T) {
+	srv, _ := newTestServer(t, defaultsPolicy, goodIdentity())
+	rec := doSign(t, srv, "good", clientKeyLine(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	parsed, _, _, _, err := ssh.ParseAuthorizedKey(rec.Body.Bytes())
+	if err != nil {
+		t.Fatalf("response is not a key: %v", err)
+	}
+	cert := parsed.(*ssh.Certificate)
+	if cert.KeyId != "gha:your-org/your-repo:123456789" {
+		t.Errorf("KeyId = %q (want default template applied)", cert.KeyId)
+	}
+	if cert.ValidBefore-cert.ValidAfter != 330 { // 300s default TTL + 30s offset
+		t.Errorf("validity window = %d, want 330", cert.ValidBefore-cert.ValidAfter)
+	}
+	if got := cert.CriticalOptions["source-address"]; got != "192.0.2.0/24" {
+		t.Errorf("source-address = %q, want default applied", got)
+	}
+}
+
 func TestSignDenials(t *testing.T) {
 	keyLine := clientKeyLine(t)
 

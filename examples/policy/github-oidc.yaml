@@ -12,6 +12,10 @@ defaults:
   allowed_public_key_types:
     - "ssh-ed25519"
 
+  # valid_for_seconds, key_id_template, and source_address may also be set
+  # here as policy-wide defaults; a rule that omits them inherits these, and
+  # a rule that sets them overrides for itself. They are left per-rule below.
+
   # Certificates grant nothing beyond authentication unless enabled here.
   extensions:
     permit_pty: false

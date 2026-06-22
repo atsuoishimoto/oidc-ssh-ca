@@ -33,12 +33,26 @@ type Policy struct {
 	Rules    []Rule   `yaml:"rules"`
 }
 
-// Defaults holds policy-wide defaults applied to every rule.
+// Defaults holds policy-wide defaults applied to every rule. A rule that
+// omits valid_for_seconds, key_id_template, or source_address inherits the
+// value set here; a rule that sets the field overrides the default for
+// itself.
 type Defaults struct {
 	ValidAfterOffsetSeconds *int        `yaml:"valid_after_offset_seconds"`
 	MaxValidForSeconds      *int        `yaml:"max_valid_for_seconds"`
 	AllowedPublicKeyTypes   []string    `yaml:"allowed_public_key_types"`
 	Extensions              *Extensions `yaml:"extensions"`
+	// ValidForSeconds is the default certificate TTL for rules that omit
+	// certificate.valid_for_seconds. A rule with neither its own value nor
+	// this default is a startup error.
+	ValidForSeconds *int `yaml:"valid_for_seconds"`
+	// KeyIDTemplate is the default key_id_template for rules that omit
+	// certificate.key_id_template. A rule with neither its own value nor
+	// this default is a startup error.
+	KeyIDTemplate string `yaml:"key_id_template"`
+	// SourceAddress is the default source-address restriction for rules
+	// that omit certificate.source_address (e.g. an org-wide CIDR allowlist).
+	SourceAddress []string `yaml:"source_address"`
 }
 
 // Extensions controls the OpenSSH certificate extensions. All default to
@@ -95,10 +109,14 @@ type JWTMatch struct {
 
 // Certificate describes the certificate issued when the rule matches.
 type Certificate struct {
-	Principals      []string    `yaml:"principals"`
-	ValidForSeconds int         `yaml:"valid_for_seconds"`
-	KeyIDTemplate   string      `yaml:"key_id_template"`
-	Extensions      *Extensions `yaml:"extensions"`
+	Principals []string `yaml:"principals"`
+	// ValidForSeconds is the certificate TTL. nil means "inherit
+	// defaults.valid_for_seconds"; an explicit value overrides the default.
+	ValidForSeconds *int `yaml:"valid_for_seconds"`
+	// KeyIDTemplate is the key_id_template. Empty means "inherit
+	// defaults.key_id_template"; a non-empty value overrides the default.
+	KeyIDTemplate string      `yaml:"key_id_template"`
+	Extensions    *Extensions `yaml:"extensions"`
 	// ForceCommand, when set, is embedded as the certificate's
 	// force-command critical option: the target server runs only this
 	// command regardless of what the client requests. It is used
@@ -145,6 +163,38 @@ func (p *Policy) ExtensionsFor(r *Rule) Extensions {
 		return *p.Defaults.Extensions
 	}
 	return Extensions{}
+}
+
+// ValidForSecondsFor returns the effective certificate TTL for a rule: the
+// rule's own valid_for_seconds if set, otherwise defaults.valid_for_seconds.
+// A return of 0 means neither was set; Validate rejects that at startup.
+func (p *Policy) ValidForSecondsFor(r *Rule) int {
+	if r.Certificate.ValidForSeconds != nil {
+		return *r.Certificate.ValidForSeconds
+	}
+	if p.Defaults.ValidForSeconds != nil {
+		return *p.Defaults.ValidForSeconds
+	}
+	return 0
+}
+
+// KeyIDTemplateFor returns the effective key_id_template for a rule: the
+// rule's own template if set, otherwise defaults.key_id_template. An empty
+// return means neither was set; Validate rejects that at startup.
+func (p *Policy) KeyIDTemplateFor(r *Rule) string {
+	if r.Certificate.KeyIDTemplate != "" {
+		return r.Certificate.KeyIDTemplate
+	}
+	return p.Defaults.KeyIDTemplate
+}
+
+// SourceAddressFor returns the effective source-address restriction for a
+// rule: the rule's own list if non-empty, otherwise defaults.source_address.
+func (p *Policy) SourceAddressFor(r *Rule) []string {
+	if len(r.Certificate.SourceAddress) > 0 {
+		return r.Certificate.SourceAddress
+	}
+	return p.Defaults.SourceAddress
 }
 
 // Issuers returns the deduplicated set of issuers referenced by enabled
@@ -216,6 +266,25 @@ func (p *Policy) Validate() error {
 			return fmt.Errorf("policy: unsupported public key type %q (supported: ssh-ed25519)", kt)
 		}
 	}
+	// Validate the defaults block itself, so an invalid default is rejected
+	// even when every rule overrides it.
+	if p.Defaults.ValidForSeconds != nil {
+		if *p.Defaults.ValidForSeconds <= 0 {
+			return errors.New("policy: defaults.valid_for_seconds must be positive")
+		}
+		if *p.Defaults.ValidForSeconds > p.MaxValidForSeconds() {
+			return fmt.Errorf("policy: defaults.valid_for_seconds %d exceeds defaults.max_valid_for_seconds %d",
+				*p.Defaults.ValidForSeconds, p.MaxValidForSeconds())
+		}
+	}
+	if p.Defaults.KeyIDTemplate != "" {
+		if _, err := templateVars(p.Defaults.KeyIDTemplate); err != nil {
+			return fmt.Errorf("policy: defaults.%w", err)
+		}
+	}
+	if err := validateSourceAddress("defaults.source_address", p.Defaults.SourceAddress); err != nil {
+		return fmt.Errorf("policy: %w", err)
+	}
 	if len(p.Rules) == 0 {
 		return errors.New("policy: at least one rule is required")
 	}
@@ -273,23 +342,25 @@ func (p *Policy) Validate() error {
 				return fmt.Errorf("policy: %s: certificate.principals %q contains characters outside [A-Za-z0-9._@:-] or exceeds 128 bytes", where, principal)
 			}
 		}
-		if c.ValidForSeconds <= 0 {
-			return fmt.Errorf("policy: %s: certificate.valid_for_seconds must be positive", where)
+		ttl := p.ValidForSecondsFor(r)
+		if ttl <= 0 {
+			return fmt.Errorf("policy: %s: certificate.valid_for_seconds is required (set it on the rule or defaults)", where)
 		}
-		if c.ValidForSeconds > p.MaxValidForSeconds() {
+		if ttl > p.MaxValidForSeconds() {
 			return fmt.Errorf("policy: %s: certificate.valid_for_seconds %d exceeds defaults.max_valid_for_seconds %d",
-				where, c.ValidForSeconds, p.MaxValidForSeconds())
+				where, ttl, p.MaxValidForSeconds())
 		}
-		if c.KeyIDTemplate == "" {
-			return fmt.Errorf("policy: %s: certificate.key_id_template is required", where)
+		tmpl := p.KeyIDTemplateFor(r)
+		if tmpl == "" {
+			return fmt.Errorf("policy: %s: certificate.key_id_template is required (set it on the rule or defaults)", where)
 		}
-		if _, err := templateVars(c.KeyIDTemplate); err != nil {
+		if _, err := templateVars(tmpl); err != nil {
 			return fmt.Errorf("policy: %s: %w", where, err)
 		}
 		if err := validateForceCommand(c.ForceCommand); err != nil {
 			return fmt.Errorf("policy: %s: %w", where, err)
 		}
-		if err := validateSourceAddress(c.SourceAddress); err != nil {
+		if err := validateSourceAddress("certificate.source_address", p.SourceAddressFor(r)); err != nil {
 			return fmt.Errorf("policy: %s: %w", where, err)
 		}
 	}
@@ -317,14 +388,16 @@ func validateForceCommand(cmd string) error {
 
 // validateSourceAddress checks that every source_address entry is valid
 // CIDR notation. Values are never silently rewritten, so a bare address
-// without a mask (e.g. 192.0.2.10) is an error: write 192.0.2.10/32.
-func validateSourceAddress(cidrs []string) error {
+// without a mask (e.g. 192.0.2.10) is an error: write 192.0.2.10/32. field
+// is the policy path used in error messages (e.g. "certificate.source_address"
+// for a rule, "source_address" for the defaults block).
+func validateSourceAddress(field string, cidrs []string) error {
 	for _, c := range cidrs {
 		if c == "" {
-			return errors.New("certificate.source_address contains an empty entry")
+			return fmt.Errorf("%s contains an empty entry", field)
 		}
 		if _, _, err := net.ParseCIDR(c); err != nil {
-			return fmt.Errorf("certificate.source_address %q is not CIDR notation (e.g. 192.0.2.0/24 or 2001:db8::/32)", c)
+			return fmt.Errorf("%s %q is not CIDR notation (e.g. 192.0.2.0/24 or 2001:db8::/32)", field, c)
 		}
 	}
 	return nil
