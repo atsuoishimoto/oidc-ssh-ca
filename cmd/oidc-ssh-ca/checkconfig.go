@@ -37,7 +37,7 @@ func cmdCheckConfig(args []string) error {
 	for i := range pol.Rules {
 		r := &pol.Rules[i]
 		// Validation already ensured the template parses.
-		vars, _ := policy.TemplateVars(r.Certificate.KeyIDTemplate)
+		vars, _ := policy.TemplateVars(pol.KeyIDTemplateFor(r))
 		for _, v := range vars {
 			if !knownGitHubClaims[v] {
 				warnings = append(warnings, fmt.Sprintf(
@@ -66,11 +66,11 @@ func cmdCheckConfig(args []string) error {
 		if r.Certificate.ForceCommand != "" {
 			extra += fmt.Sprintf(" force_command=%q", r.Certificate.ForceCommand)
 		}
-		if len(r.Certificate.SourceAddress) > 0 {
-			extra += fmt.Sprintf(" source_address=%v", r.Certificate.SourceAddress)
+		if sa := pol.SourceAddressFor(r); len(sa) > 0 {
+			extra += fmt.Sprintf(" source_address=%v", sa)
 		}
 		fmt.Printf("  rule %q (%s): principals=%v ttl=%ds%s\n",
-			r.Name, state, r.Certificate.Principals, r.Certificate.ValidForSeconds, extra)
+			r.Name, state, r.Certificate.Principals, pol.ValidForSecondsFor(r), extra)
 	}
 	for _, w := range warnings {
 		fmt.Println("warning:", w)

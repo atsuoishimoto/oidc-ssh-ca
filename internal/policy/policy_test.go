@@ -82,6 +82,117 @@ rules:
 	}
 }
 
+// defaultsInheritPolicy sets valid_for_seconds, key_id_template, and
+// source_address in the defaults block and omits them from the rule, so the
+// rule must inherit all three.
+const defaultsInheritPolicy = `
+version: 1
+defaults:
+  valid_for_seconds: 450
+  key_id_template: "gha:${repository}:${run_id}"
+  source_address:
+    - "192.0.2.0/24"
+rules:
+  - name: "r1"
+    match:
+      jwt:
+        issuer: "https://example.com"
+        audience: "aud"
+    certificate:
+      principals: ["p"]
+`
+
+func TestDefaultsInherited(t *testing.T) {
+	p, err := Parse([]byte(defaultsInheritPolicy))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	r := &p.Rules[0]
+	if got := p.ValidForSecondsFor(r); got != 450 {
+		t.Errorf("ValidForSecondsFor = %d, want 450", got)
+	}
+	if got := p.KeyIDTemplateFor(r); got != "gha:${repository}:${run_id}" {
+		t.Errorf("KeyIDTemplateFor = %q", got)
+	}
+	if got := p.SourceAddressFor(r); len(got) != 1 || got[0] != "192.0.2.0/24" {
+		t.Errorf("SourceAddressFor = %v", got)
+	}
+}
+
+func TestDefaultsOverriddenByRule(t *testing.T) {
+	src := strings.Replace(defaultsInheritPolicy,
+		`      principals: ["p"]`,
+		"      principals: [\"p\"]\n      valid_for_seconds: 120\n      key_id_template: \"r:${sub}\"\n      source_address:\n        - \"203.0.113.0/24\"",
+		1)
+	p, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	r := &p.Rules[0]
+	if got := p.ValidForSecondsFor(r); got != 120 {
+		t.Errorf("ValidForSecondsFor = %d, want 120 (rule overrides default)", got)
+	}
+	if got := p.KeyIDTemplateFor(r); got != "r:${sub}" {
+		t.Errorf("KeyIDTemplateFor = %q, want rule value", got)
+	}
+	if got := p.SourceAddressFor(r); len(got) != 1 || got[0] != "203.0.113.0/24" {
+		t.Errorf("SourceAddressFor = %v, want rule value", got)
+	}
+}
+
+func TestDefaultsMissingRequiredFields(t *testing.T) {
+	// Neither the rule nor defaults set valid_for_seconds / key_id_template.
+	const noDefaults = `
+version: 1
+rules:
+  - name: "r1"
+    match:
+      jwt:
+        issuer: "https://example.com"
+        audience: "aud"
+    certificate:
+      principals: ["p"]
+`
+	cases := []struct {
+		name     string
+		mutate   func(string) string
+		contains string
+	}{
+		{"valid_for_seconds missing everywhere", func(s string) string {
+			// Provide key_id_template only, so the error isolates valid_for_seconds.
+			return strings.Replace(s, `      principals: ["p"]`,
+				"      principals: [\"p\"]\n      key_id_template: \"x:${sub}\"", 1)
+		}, "valid_for_seconds is required"},
+		{"key_id_template missing everywhere", func(s string) string {
+			return strings.Replace(s, `      principals: ["p"]`,
+				"      principals: [\"p\"]\n      valid_for_seconds: 300", 1)
+		}, "key_id_template is required"},
+		{"default valid_for_seconds over max", func(s string) string {
+			return strings.Replace(s, "version: 1",
+				"version: 1\ndefaults:\n  max_valid_for_seconds: 300\n  valid_for_seconds: 600\n  key_id_template: \"x:${sub}\"", 1)
+		}, "defaults.valid_for_seconds 600 exceeds"},
+		{"default key_id_template malformed", func(s string) string {
+			return strings.Replace(s, "version: 1",
+				"version: 1\ndefaults:\n  valid_for_seconds: 300\n  key_id_template: \"x:$sub\"", 1)
+		}, "defaults.key_id_template"},
+		{"default source_address not CIDR", func(s string) string {
+			return strings.Replace(s, "version: 1",
+				"version: 1\ndefaults:\n  valid_for_seconds: 300\n  key_id_template: \"x:${sub}\"\n  source_address:\n    - \"192.0.2.10\"", 1)
+		}, "defaults.source_address"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Parse([]byte(tc.mutate(noDefaults)))
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tc.contains)
+			}
+			if !strings.Contains(err.Error(), tc.contains) {
+				t.Fatalf("error %q does not contain %q", err, tc.contains)
+			}
+		})
+	}
+}
+
 // withCertField appends a field to the rule's certificate block.
 func withCertField(policyYAML, field string) string {
 	const anchor = `      key_id_template: "gha:${repository}:${run_id}:${run_attempt}"`

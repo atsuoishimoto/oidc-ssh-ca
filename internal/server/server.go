@@ -144,21 +144,22 @@ func (s *Server) Sign(ctx context.Context, method, authHeader string, body []byt
 	}
 	rule := decision.Rule
 
-	keyID, err := policy.ExpandKeyID(rule.Certificate.KeyIDTemplate, id.Claims)
+	keyID, err := policy.ExpandKeyID(pol.KeyIDTemplateFor(rule), id.Claims)
 	if err != nil {
 		return s.deny(requestID, http.StatusForbidden, reasonKeyIDInvalid, err.Error(), claimAttrs...)
 	}
 
+	validForSeconds := pol.ValidForSecondsFor(rule)
 	now := s.now()
 	certBytes, _, err := issuer.Issue(s.signer, &issuer.Request{
 		PublicKey:     pub,
 		KeyID:         keyID,
 		Principals:    rule.Certificate.Principals,
 		ValidAfter:    now.Add(time.Duration(pol.ValidAfterOffsetSeconds()) * time.Second),
-		ValidBefore:   now.Add(time.Duration(rule.Certificate.ValidForSeconds) * time.Second),
+		ValidBefore:   now.Add(time.Duration(validForSeconds) * time.Second),
 		Extensions:    pol.ExtensionsFor(rule),
 		ForceCommand:  rule.Certificate.ForceCommand,
-		SourceAddress: rule.Certificate.SourceAddress,
+		SourceAddress: pol.SourceAddressFor(rule),
 	})
 	if err != nil {
 		return s.deny(requestID, http.StatusInternalServerError, reasonSigningError, err.Error(), claimAttrs...)
@@ -168,7 +169,7 @@ func (s *Server) Sign(ctx context.Context, method, authHeader string, body []byt
 		"rule", rule.Name,
 		"principals", rule.Certificate.Principals,
 		"key_id", keyID,
-		"valid_for_seconds", rule.Certificate.ValidForSeconds,
+		"valid_for_seconds", validForSeconds,
 	}
 	if rule.Certificate.ForceCommand != "" {
 		issuedAttrs = append(issuedAttrs, "force_command", rule.Certificate.ForceCommand)

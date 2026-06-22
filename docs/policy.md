@@ -19,6 +19,9 @@ defaults:           # optional
   valid_after_offset_seconds: -30
   max_valid_for_seconds: 900
   allowed_public_key_types: ["ssh-ed25519"]
+  valid_for_seconds: 600                      # default rule TTL
+  key_id_template: "gha:${repository}:${run_id}"  # default key ID
+  source_address: ["192.0.2.0/24"]            # default address restriction
   extensions:
     permit_pty: false
     permit_port_forwarding: false
@@ -36,8 +39,8 @@ rules:              # required, at least one
           repository: "your-org/your-repo"
     certificate:
       principals: ["gha-prod-deploy"]
-      valid_for_seconds: 600
-      key_id_template: "gha:${repository}:${run_id}"
+      # valid_for_seconds and key_id_template are inherited from defaults
+      # here; set them on the rule to override.
       extensions:
         permit_pty: true
 ```
@@ -96,6 +99,32 @@ key types the CA accepts in `/sign` requests. `ssh-ed25519` is the only
 type this version supports — listing anything else is a validation error.
 Certificate keys (`*-cert-v01@openssh.com`) are always rejected: the CA
 signs raw public keys, never other certificates.
+
+### `defaults.valid_for_seconds`
+
+Optional, integer. The certificate TTL applied to any rule that omits
+`certificate.valid_for_seconds`. Must be positive and at most
+`defaults.max_valid_for_seconds`. A rule's own value overrides this; if
+neither the rule nor `defaults` sets a TTL, startup (or reload) fails.
+Use it when most rules share one lifetime and you would rather not repeat
+it on every rule.
+
+### `defaults.key_id_template`
+
+Optional, string. The `key_id_template` applied to any rule that omits
+`certificate.key_id_template`. A rule's own value overrides this; if
+neither the rule nor `defaults` sets a template, startup (or reload)
+fails. Same expansion and sanitization rules as the per-rule field — see
+[key_id_template expansion](#key_id_template-expansion).
+
+### `defaults.source_address`
+
+Optional, list of strings. The `source-address` restriction applied to any
+rule that omits `certificate.source_address` — useful for an org-wide CIDR
+allowlist (e.g. your self-hosted runners' egress range) that should cover
+every rule. A rule that sets its own `source_address` **replaces** this
+default entirely (no merging). Each entry must be CIDR notation, as for the
+per-rule field.
 
 ### `defaults.extensions`
 
@@ -264,17 +293,21 @@ server's decision.
 
 ### `certificate.valid_for_seconds`
 
-Required, integer. The certificate TTL, measured from signing time. Must
-be positive and at most `defaults.max_valid_for_seconds`. Size it to the
-job that uses it: a deploy that takes 2 minutes does not need a 15-minute
-certificate.
+Required unless inherited from `defaults.valid_for_seconds`. Integer, the
+certificate TTL measured from signing time. Must be positive and at most
+`defaults.max_valid_for_seconds`. A value here overrides the default for
+this rule; if neither the rule nor `defaults` sets it, the policy is
+rejected. Size it to the job that uses it: a deploy that takes 2 minutes
+does not need a 15-minute certificate.
 
 ### `certificate.key_id_template`
 
-Required, string. Template for the certificate's key ID, expanded from
-verified claims. The key ID appears in the CA audit log and verbatim in
-the target server's sshd log — it is the thread that ties an SSH login
-back to the exact CI run that requested it. See
+Required unless inherited from `defaults.key_id_template`. String, the
+template for the certificate's key ID, expanded from verified claims. A
+value here overrides the default for this rule; if neither the rule nor
+`defaults` sets it, the policy is rejected. The key ID appears in the CA
+audit log and verbatim in the target server's sshd log — it is the thread
+that ties an SSH login back to the exact CI run that requested it. See
 [key_id_template expansion](#key_id_template-expansion) below.
 
 ### `certificate.extensions`
@@ -300,7 +333,8 @@ Optional, list of strings. When set, it is embedded as the
 the client connects from one of these CIDR ranges. Each entry must be
 **CIDR notation** — a bare address is an error, so write `192.0.2.10/32`,
 not `192.0.2.10`. Both IPv4 and IPv6 are accepted
-(`192.0.2.0/24`, `2001:db8::/32`).
+(`192.0.2.0/24`, `2001:db8::/32`). When omitted, the rule inherits
+`defaults.source_address`; a value here replaces that default entirely.
 
 ```yaml
 certificate:
