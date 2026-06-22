@@ -154,6 +154,84 @@ can obtain, that dies in minutes, and that can do exactly one thing while
 it lives. See the [policy reference](policy.md#certificateforce_command)
 for the fields.
 
+## Scope certificates with purpose-specific principals
+
+`force-command` bounds *what* a certificate can do; principals bound *where* it
+can go — and that boundary is easy to leave wider than intended. `TrustedUserCAKeys`
+is host-global: once a server trusts the CA (see
+[Configuring target servers](target-servers.md)), **every** certificate the CA
+issues becomes a candidate to log in there. The only remaining gate is whether
+one of the certificate's principals appears in that account's
+`AuthorizedPrincipalsFile`. The principal name, not the workflow's intent, is
+what separates "may log in here" from "may not."
+
+That has a consequence worth stating plainly: a certificate minted for
+"workflow A, deploying to server A" is equally usable on server B if server B
+authorizes the same principal. If two unrelated workflows share a principal
+(both issue `gha-deploy`), or every server authorizes one broad principal, then
+any certificate from any of those workflows can log into any of those servers.
+The short TTL bounds *how long* such a certificate works, not *where* — so a
+leaked or misdirected certificate reaches further than the workflow ever
+intended.
+
+The fix is to make the principal carry the intent. Give each purpose its own
+principal in the [policy](policy.md#certificateprincipals), and list on each
+server only the principals that server legitimately serves.
+
+In the policy, one rule per target:
+
+```yaml
+rules:
+  - name: "app-a-deploy"
+    match:
+      jwt:
+        issuer: "https://token.actions.githubusercontent.com"
+        audience: "ssh-ca-prod"
+        owner: "your-org"
+        reponame: "app-a"
+        claims_exact:
+          ref: "refs/heads/main"
+    certificate:
+      principals:
+        - "gha-app-a"        # only server A authorizes this
+      valid_for_seconds: 600
+      key_id_template: "gha:${repository}:${run_id}:${run_attempt}"
+
+  - name: "app-b-deploy"
+    match:
+      jwt:
+        issuer: "https://token.actions.githubusercontent.com"
+        audience: "ssh-ca-prod"
+        owner: "your-org"
+        reponame: "app-b"
+        claims_exact:
+          ref: "refs/heads/main"
+    certificate:
+      principals:
+        - "gha-app-b"        # only server B authorizes this
+      valid_for_seconds: 600
+      key_id_template: "gha:${repository}:${run_id}:${run_attempt}"
+```
+
+On each server, the `AuthorizedPrincipalsFile` for the login account lists only
+its own principal:
+
+```text
+# server A — /etc/ssh/auth_principals/deploy
+gha-app-a
+
+# server B — /etc/ssh/auth_principals/deploy
+gha-app-b
+```
+
+Now a certificate carrying `gha-app-a` is rejected by server B, because that
+name does not appear in any of server B's principal files — the same per-account
+check shown in
+[Configuring target servers](target-servers.md#2-authorize-principals-for-each-login-user),
+applied as a boundary *between* servers. Combined with the previous section, the
+two controls layer cleanly: principals decide which servers a certificate can
+reach, and `force_command` decides what it may do once it gets there.
+
 ## When this is worth it
 
 `oidc-ssh-ca` pays off as the following become true; if few of them hold,
