@@ -9,7 +9,7 @@ import (
 
 // version is the released version baked into the binary; GoReleaser
 // overrides it at build time via -ldflags.
-var version = "0.3.0"
+var version = "0.4.0"
 
 func main() {
 	if len(os.Args) < 2 {
