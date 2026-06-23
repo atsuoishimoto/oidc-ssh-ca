@@ -89,6 +89,57 @@ reload, and denies when JWKS is unavailable with no cache — which is the
 right default, but it fails *closed*: the failure mode is "deploy
 denied," not "deploy with stale trust."
 
+That dependency is cheap to make redundant, because the CA is
+**stateless**. It keeps no database and no session state: the policy is
+read from a file, the JWKS is cached in memory and refetched on demand,
+and each `/sign` request is decided entirely from the request plus that
+in-memory state. Nothing has to be shared or synchronized between
+instances, so you can run as many as you like — N replicas behind a load
+balancer, or a serverless target such as AWS Lambda (which the tool
+supports via the Lambda Web Adapter; see
+[Deployment](deployment/index.md)) that scales out on its own and has no
+host to keep running. Availability becomes a deployment choice rather than
+a single point of failure: the same property that makes the CA a sensitive
+asset — it only signs, it never stores — is what makes it easy to make
+highly available.
+
+## One key to guard, not many
+
+Stepping back, the migration changes the *shape* of the key-protection
+problem more than its total size. The stored-key world disperses risk: a
+fleet accumulates many long-lived private keys — one per repository,
+per environment, per "we needed access that one time" — scattered across
+GitHub Secrets, CI variables, and developer laptops. `oidc-ssh-ca`
+concentrates it into a single CA private key. Neither is strictly safer;
+they fail in opposite ways, and it is worth being clear about the trade.
+
+**Many scattered keys** spread the blast radius — a single leak only
+exposes what that one key authorizes — but they are hard to *govern*. They
+are easy to copy and slow to notice missing, no one can confidently
+enumerate where every copy lives, and rotation means tracking down and
+replacing each one, so in practice they are rarely rotated and quietly
+accumulate. The aggregate attack surface is large, diffuse, and
+under-monitored: many small, neglected secrets, each an independent way in.
+
+**One central CA key** inverts both sides. The blast radius is the worst
+case in the project — whoever holds it can mint certificates for every
+server that trusts the CA, so its compromise is a fleet-wide event. But
+there is exactly one asset to reason about, and that makes strong
+protection tractable: you can spend real effort on a single key — keep it
+in memory only, put it behind a KMS/HSM via the `Signer` interface,
+restrict the one host that can reach it, and rotate it with one runbook
+instead of an inventory hunt. Every certificate it signs is also recorded
+in the audit log, so issuance is observable in a way that copies of a
+static key never are.
+
+The honest summary: the stored-key model gives you *many easy problems you
+will tend to neglect*; the CA model gives you *one hard problem you can
+actually solve*. The CA is worth it when you would rather concentrate risk
+into a single, well-defended, observable, rotatable key than disperse it
+across secrets you cannot fully account for — and when you are prepared to
+defend that one key accordingly. The earlier sections on protecting the CA
+key and on availability are how you pay for that concentration.
+
 ## What this does not protect against
 
 Short-lived certificates change the lifetime of credentials, not who can
