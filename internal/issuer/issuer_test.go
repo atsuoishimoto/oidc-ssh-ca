@@ -255,6 +255,36 @@ func TestLoadCAKey(t *testing.T) {
 		}
 	})
 
+	t.Run("not a regular file", func(t *testing.T) {
+		if _, err := LoadCAKey(t.TempDir(), false); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Fatalf("expected not-a-regular-file error, got %v", err)
+		}
+	})
+
+	t.Run("symlink to key file is followed", func(t *testing.T) {
+		// Checks run on the opened descriptor, so a symlink resolves to
+		// its target and the permission check applies to the target.
+		path := writeTestCAKey(t, 0o600)
+		link := filepath.Join(t.TempDir(), "ca_key_link")
+		if err := os.Symlink(path, link); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadCAKey(link, false); err != nil {
+			t.Fatalf("LoadCAKey via symlink: %v", err)
+		}
+	})
+
+	t.Run("symlink to loose-permission key file is rejected", func(t *testing.T) {
+		path := writeTestCAKey(t, 0o644)
+		link := filepath.Join(t.TempDir(), "ca_key_link")
+		if err := os.Symlink(path, link); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadCAKey(link, false); err == nil || !strings.Contains(err.Error(), "permissions") {
+			t.Fatalf("expected permissions error, got %v", err)
+		}
+	})
+
 	t.Run("env key material", func(t *testing.T) {
 		path := writeTestCAKey(t, 0o600)
 		data, err := os.ReadFile(path)

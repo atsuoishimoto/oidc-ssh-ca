@@ -3,6 +3,7 @@ package issuer
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"golang.org/x/crypto/ssh"
@@ -69,6 +70,15 @@ func LoadCAKey(flagPath string, skipPermCheck bool) (Signer, error) {
 		return nil, err
 	}
 	signer, err := ssh.ParsePrivateKey(pem)
+	// Best-effort scrub: zero the PEM buffer as soon as parsing is done so
+	// the raw key material does not linger in the heap until the GC reuses
+	// it. The parsed ed25519 seed necessarily lives on inside the signer,
+	// and the OIDC_SSH_CA_KEY copy held by the process environment cannot
+	// be scrubbed portably; this only narrows the window in which a heap
+	// dump, core file, or swap contains the PEM alongside the parsed key.
+	for i := range pem {
+		pem[i] = 0
+	}
 	if err != nil {
 		return nil, fmt.Errorf("parse CA key from %s: %w", sources[0].name, err)
 	}
@@ -81,8 +91,20 @@ func LoadCAKey(flagPath string, skipPermCheck bool) (Signer, error) {
 // readKeyFile reads a key file, refusing files readable by group or
 // other (must be 0600 or stricter) unless skipPermCheck is set. The
 // regular-file check always runs.
+//
+// The file is opened exactly once and all checks run on the open
+// descriptor (fstat), so the regular-file and permission checks apply to
+// the same file whose bytes are returned — a path swap between check and
+// read cannot substitute different content (no TOCTOU window). Symlinks
+// are still followed on open, as before; the checks then apply to the
+// resolved target actually read.
 func readKeyFile(path string, skipPermCheck bool) ([]byte, error) {
-	info, err := os.Stat(path)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("CA key file: %w", err)
+	}
+	defer f.Close()
+	info, err := f.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("CA key file: %w", err)
 	}
@@ -92,7 +114,7 @@ func readKeyFile(path string, skipPermCheck bool) ([]byte, error) {
 	if perm := info.Mode().Perm(); !skipPermCheck && perm&0o077 != 0 {
 		return nil, fmt.Errorf("CA key file %s has permissions %04o: must not be accessible by group/other (chmod 0600)", path, perm)
 	}
-	data, err := os.ReadFile(path)
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return nil, fmt.Errorf("CA key file: %w", err)
 	}
