@@ -2,7 +2,8 @@
 // policy. Signature verification, discovery, and JWKS handling are
 // delegated to github.com/coreos/go-oidc; this package fixes the
 // operational rules: RS256 only, audience checked by policy matching,
-// and a 60-second leeway on time-based claims.
+// a 60-second leeway on time-based claims, and a 10-minute TTL on the
+// cached JWKS.
 package oidc
 
 import (
@@ -24,22 +25,37 @@ import (
 // ClockSkewLeeway is applied when validating exp / nbf / iat.
 const ClockSkewLeeway = 60 * time.Second
 
+// jwksTTL bounds how long a discovered provider — and therefore its
+// cached JWKS — is trusted before discovery is re-run, so a signing key
+// the IdP rotates out of its JWKS stops being accepted within this
+// window instead of living for the whole process lifetime.
+const jwksTTL = 10 * time.Minute
+
 // Verifier verifies a bearer token and returns the verified identity.
 type Verifier interface {
 	Verify(ctx context.Context, rawToken string, allowedIssuers []string) (*policy.Identity, error)
 }
 
 // RemoteVerifier verifies tokens using OIDC discovery and remote JWKS.
-// Discovered providers are cached per issuer; go-oidc caches JWKS keys
-// in memory and refetches once when an unknown key ID appears. If a
-// JWKS refresh fails, previously cached keys keep working; with no
-// cached keys verification fails (deny).
+// Discovered providers are cached per issuer for jwksTTL; once the TTL
+// expires the provider is rebuilt, which re-runs discovery and fetches
+// a fresh JWKS. Within the TTL go-oidc caches JWKS keys in memory and
+// refetches once when an unknown key ID appears. If a refresh fails,
+// the previously fetched keys keep working (stale, retried on the next
+// request); with no cached keys verification fails (deny).
 type RemoteVerifier struct {
 	client *http.Client
 	now    func() time.Time
 
 	mu        sync.Mutex
-	providers map[string]*gooidc.Provider
+	providers map[string]cachedProvider
+}
+
+// cachedProvider is a discovered provider plus the time it was built,
+// which bounds how long its JWKS cache is trusted.
+type cachedProvider struct {
+	provider  *gooidc.Provider
+	fetchedAt time.Time
 }
 
 // NewRemoteVerifier returns a verifier with its own HTTP client.
@@ -47,7 +63,7 @@ func NewRemoteVerifier() *RemoteVerifier {
 	return &RemoteVerifier{
 		client:    &http.Client{Timeout: 10 * time.Second},
 		now:       time.Now,
-		providers: map[string]*gooidc.Provider{},
+		providers: map[string]cachedProvider{},
 	}
 }
 
@@ -99,14 +115,22 @@ func (v *RemoteVerifier) Verify(ctx context.Context, rawToken string, allowedIss
 func (v *RemoteVerifier) provider(ctx context.Context, issuer string) (*gooidc.Provider, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	if p, ok := v.providers[issuer]; ok {
-		return p, nil
+	cached, ok := v.providers[issuer]
+	if ok && v.now().Sub(cached.fetchedAt) < jwksTTL {
+		return cached.provider, nil
 	}
 	p, err := gooidc.NewProvider(gooidc.ClientContext(ctx, v.client), issuer)
 	if err != nil {
+		if ok {
+			// Fail safe: a failed refresh must not drop key material
+			// that was fetched successfully before. The stale provider
+			// keeps serving and the refresh is retried on the next
+			// request; only a successful rebuild replaces it.
+			return cached.provider, nil
+		}
 		return nil, err
 	}
-	v.providers[issuer] = p
+	v.providers[issuer] = cachedProvider{provider: p, fetchedAt: v.now()}
 	return p, nil
 }
 
