@@ -102,6 +102,46 @@ func TestProviderConcurrentMissesShareOneFetch(t *testing.T) {
 	}
 }
 
+// A discovery aborted by the *caller's* context (client disconnect,
+// per-request deadline) says nothing about the issuer's health and
+// must not be negative-cached against later requests.
+func TestProviderDoesNotCacheContextCancellation(t *testing.T) {
+	var calls atomic.Int32
+	inFlight := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	srv := newDiscoveryServer(t, func() bool {
+		if calls.Add(1) == 1 {
+			once.Do(func() { close(inFlight) })
+			<-release
+		}
+		return true
+	})
+	t.Cleanup(func() { close(release) })
+
+	v := NewRemoteVerifier()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := v.provider(ctx, srv.URL)
+		done <- err
+	}()
+	<-inFlight
+	cancel()
+	if err := <-done; err == nil {
+		t.Fatal("canceled discovery should fail")
+	}
+
+	// A fresh request must retry immediately, not hit a cached failure.
+	if _, err := v.provider(context.Background(), srv.URL); err != nil {
+		t.Fatalf("discovery after unrelated cancellation: %v", err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("discovery fetched %d times, want 2", got)
+	}
+}
+
 func TestProviderCachesDiscoveryFailure(t *testing.T) {
 	var calls atomic.Int32
 	var fail atomic.Bool

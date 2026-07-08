@@ -136,8 +136,12 @@ func (v *RemoteVerifier) provider(ctx context.Context, issuer string) (*gooidc.P
 	}
 	p, err := gooidc.NewProvider(gooidc.ClientContext(ctx, v.client), issuer)
 	if err != nil {
-		e.err = err
-		e.failedAt = v.now()
+		// A canceled or deadlined *request* context says nothing about
+		// the issuer's health — don't poison the negative cache with it.
+		if ctx.Err() == nil {
+			e.err = err
+			e.failedAt = v.now()
+		}
 		return nil, err
 	}
 	e.provider = p
