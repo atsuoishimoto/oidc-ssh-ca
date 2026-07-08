@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -98,8 +99,13 @@ func LoadCAKey(flagPath string, skipPermCheck bool) (Signer, error) {
 // read cannot substitute different content (no TOCTOU window). Symlinks
 // are still followed on open, as before; the checks then apply to the
 // resolved target actually read.
+//
+// O_NONBLOCK makes the open itself non-blocking: without it, opening a
+// FIFO read-only blocks until a writer appears, so a path that names a
+// FIFO would hang startup instead of reaching the regular-file check.
+// Regular files ignore O_NONBLOCK, so reads below are unaffected.
 func readKeyFile(path string, skipPermCheck bool) ([]byte, error) {
-	f, err := os.Open(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, fmt.Errorf("CA key file: %w", err)
 	}
