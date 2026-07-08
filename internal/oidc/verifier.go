@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -38,11 +39,13 @@ type Verifier interface {
 
 // RemoteVerifier verifies tokens using OIDC discovery and remote JWKS.
 // Discovered providers are cached per issuer for jwksTTL; once the TTL
-// expires the provider is rebuilt, which re-runs discovery and fetches
-// a fresh JWKS. Within the TTL go-oidc caches JWKS keys in memory and
-// refetches once when an unknown key ID appears. If a refresh fails,
-// the previously fetched keys keep working (stale, retried on the next
-// request); with no cached keys verification fails (deny).
+// expires the provider is rebuilt, which re-runs discovery, and the
+// rebuilt provider replaces the cached one only after its JWKS endpoint
+// has served a parseable key set. Within the TTL go-oidc caches JWKS
+// keys in memory and refetches once when an unknown key ID appears. If
+// any part of a refresh fails, the previously fetched keys keep working
+// (stale, retried on the next request); with no cached keys
+// verification fails (deny).
 type RemoteVerifier struct {
 	client *http.Client
 	now    func() time.Time
@@ -119,7 +122,7 @@ func (v *RemoteVerifier) provider(ctx context.Context, issuer string) (*gooidc.P
 	if ok && v.now().Sub(cached.fetchedAt) < jwksTTL {
 		return cached.provider, nil
 	}
-	p, err := gooidc.NewProvider(gooidc.ClientContext(ctx, v.client), issuer)
+	p, err := v.discoverProvider(ctx, issuer)
 	if err != nil {
 		if ok {
 			// Fail safe: a failed refresh must not drop key material
@@ -132,6 +135,69 @@ func (v *RemoteVerifier) provider(ctx context.Context, issuer string) (*gooidc.P
 	}
 	v.providers[issuer] = cachedProvider{provider: p, fetchedAt: v.now()}
 	return p, nil
+}
+
+// jwksMaxResponseBytes caps how much of a JWKS response the pre-flight
+// check reads.
+const jwksMaxResponseBytes = 1 << 20
+
+// discoverProvider runs OIDC discovery and then confirms the issuer's
+// JWKS endpoint is serving a parseable key set. gooidc.NewProvider
+// alone fetches only the discovery document — go-oidc fetches the JWKS
+// lazily on first verification — so without this pre-flight a provider
+// rebuilt during a partial IdP outage (discovery up, JWKS down) would
+// replace working cached keys with a key set that cannot be fetched.
+func (v *RemoteVerifier) discoverProvider(ctx context.Context, issuer string) (*gooidc.Provider, error) {
+	p, err := gooidc.NewProvider(gooidc.ClientContext(ctx, v.client), issuer)
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		JWKSURI string `json:"jwks_uri"`
+	}
+	if err := p.Claims(&doc); err != nil {
+		return nil, fmt.Errorf("decode discovery document: %w", err)
+	}
+	if doc.JWKSURI == "" {
+		return nil, errors.New("discovery document has no jwks_uri")
+	}
+	if err := v.checkJWKS(ctx, doc.JWKSURI); err != nil {
+		return nil, fmt.Errorf("jwks pre-flight for %s: %w", doc.JWKSURI, err)
+	}
+	return p, nil
+}
+
+// checkJWKS fetches the JWKS URI and verifies the response looks like a
+// key set. The keys go-oidc will trust are the ones from its own fetch,
+// not this one; this only establishes that the endpoint is serving
+// before the previously cached provider is discarded.
+func (v *RemoteVerifier) checkJWKS(ctx context.Context, jwksURI string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURI, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := v.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, jwksMaxResponseBytes))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status %s", resp.Status)
+	}
+	var jwks struct {
+		Keys []json.RawMessage `json:"keys"`
+	}
+	if err := json.Unmarshal(body, &jwks); err != nil {
+		return fmt.Errorf("response is not a JWKS: %w", err)
+	}
+	if jwks.Keys == nil {
+		return errors.New("response has no keys member")
+	}
+	return nil
 }
 
 // checkTimeClaims validates exp (required), nbf, and iat with leeway.

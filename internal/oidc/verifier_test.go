@@ -26,6 +26,7 @@ type testIDP struct {
 
 	mu            sync.Mutex
 	failDiscovery bool
+	failJWKS      bool
 	discoveryHits int
 }
 
@@ -52,8 +53,12 @@ func newTestIDP(t *testing.T) *testIDP {
 	})
 	mux.HandleFunc("GET /jwks", func(w http.ResponseWriter, r *http.Request) {
 		idp.mu.Lock()
-		key, kid := idp.key, idp.kid
+		key, kid, fail := idp.key, idp.kid, idp.failJWKS
 		idp.mu.Unlock()
+		if fail {
+			http.Error(w, "jwks unavailable", http.StatusInternalServerError)
+			return
+		}
 		writeJSON(w, map[string]any{
 			"keys": []map[string]any{{
 				"kty": "RSA",
@@ -88,6 +93,12 @@ func (m *testIDP) setFailDiscovery(fail bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.failDiscovery = fail
+}
+
+func (m *testIDP) setFailJWKS(fail bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failJWKS = fail
 }
 
 func (m *testIDP) discoveryCount() int {
@@ -203,6 +214,41 @@ func TestVerifyKeepsCachedKeysWhenRefreshFails(t *testing.T) {
 	// Once the IdP is reachable again the next request refreshes, and a
 	// key rotated out in the meantime stops verifying.
 	idp.setFailDiscovery(false)
+	idp.rotateKey(t, "key-2")
+	if _, err := v.Verify(context.Background(), token, allowed); err == nil {
+		t.Fatal("token signed with a rotated-out key verified after a successful refresh")
+	}
+}
+
+func TestVerifyKeepsCachedKeysWhenJWKSFetchFails(t *testing.T) {
+	idp := newTestIDP(t)
+	start := time.Now()
+	v, clock := fakeClockVerifier(start)
+
+	claims := map[string]any{
+		"iss": idp.server.URL,
+		"exp": float64(start.Add(time.Hour).Unix()),
+	}
+	token := mintToken(t, idp.key, idp.kid, claims)
+	allowed := []string{idp.server.URL}
+
+	if _, err := v.Verify(context.Background(), token, allowed); err != nil {
+		t.Fatalf("initial verification failed: %v", err)
+	}
+
+	// Partial outage: discovery keeps answering but the JWKS endpoint
+	// is down. Rebuilding the provider (discovery alone) would succeed,
+	// but it must not replace the cached one — the previously fetched
+	// keys have to keep working.
+	idp.setFailJWKS(true)
+	*clock = start.Add(jwksTTL + time.Minute)
+	if _, err := v.Verify(context.Background(), token, allowed); err != nil {
+		t.Fatalf("verification after failed JWKS refresh should use stale keys, got: %v", err)
+	}
+
+	// Once the JWKS endpoint recovers the next request refreshes, and a
+	// key rotated out in the meantime stops verifying.
+	idp.setFailJWKS(false)
 	idp.rotateKey(t, "key-2")
 	if _, err := v.Verify(context.Background(), token, allowed); err == nil {
 		t.Fatal("token signed with a rotated-out key verified after a successful refresh")
