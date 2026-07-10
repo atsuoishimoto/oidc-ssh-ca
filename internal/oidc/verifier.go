@@ -32,6 +32,12 @@ const ClockSkewLeeway = 60 * time.Second
 // window instead of living for the whole process lifetime.
 const jwksTTL = 10 * time.Minute
 
+// discoveryRetryDelay is how long a failed OIDC discovery result is
+// cached before another attempt is made. Without it, every request for
+// an unreachable issuer would start a fresh outbound discovery attempt
+// lasting up to the full client timeout.
+const discoveryRetryDelay = 5 * time.Second
+
 // Verifier verifies a bearer token and returns the verified identity.
 type Verifier interface {
 	Verify(ctx context.Context, rawToken string, allowedIssuers []string) (*policy.Identity, error)
@@ -44,21 +50,30 @@ type Verifier interface {
 // has served a parseable key set. Within the TTL go-oidc caches JWKS
 // keys in memory and refetches once when an unknown key ID appears. If
 // any part of a refresh fails, the previously fetched keys keep working
-// (stale, retried on the next request); with no cached keys
+// (stale, retried after discoveryRetryDelay); with no cached keys
 // verification fails (deny).
+//
+// Discovery is serialized per issuer, never globally: a slow or
+// unreachable issuer only delays requests for that issuer, and
+// concurrent first requests for one issuer share a single fetch.
+// Failed discovery is cached for discoveryRetryDelay so an unreachable
+// issuer does not turn every request into an outbound attempt.
 type RemoteVerifier struct {
 	client *http.Client
 	now    func() time.Time
 
-	mu        sync.Mutex
-	providers map[string]cachedProvider
+	mu        sync.Mutex // guards the map only, never held across I/O
+	providers map[string]*providerEntry
 }
 
-// cachedProvider is a discovered provider plus the time it was built,
-// which bounds how long its JWKS cache is trusted.
-type cachedProvider struct {
-	provider  *gooidc.Provider
-	fetchedAt time.Time
+// providerEntry holds the discovery state for one issuer. Its mutex
+// serializes discovery for that issuer only.
+type providerEntry struct {
+	mu        sync.Mutex
+	provider  *gooidc.Provider // non-nil once discovery has succeeded
+	fetchedAt time.Time        // when provider was built; bounds how long its JWKS is trusted
+	err       error            // last failure, retried after discoveryRetryDelay
+	failedAt  time.Time
 }
 
 // NewRemoteVerifier returns a verifier with its own HTTP client.
@@ -66,7 +81,7 @@ func NewRemoteVerifier() *RemoteVerifier {
 	return &RemoteVerifier{
 		client:    &http.Client{Timeout: 10 * time.Second},
 		now:       time.Now,
-		providers: map[string]cachedProvider{},
+		providers: map[string]*providerEntry{},
 	}
 }
 
@@ -117,23 +132,47 @@ func (v *RemoteVerifier) Verify(ctx context.Context, rawToken string, allowedIss
 
 func (v *RemoteVerifier) provider(ctx context.Context, issuer string) (*gooidc.Provider, error) {
 	v.mu.Lock()
-	defer v.mu.Unlock()
-	cached, ok := v.providers[issuer]
-	if ok && v.now().Sub(cached.fetchedAt) < jwksTTL {
-		return cached.provider, nil
+	e, ok := v.providers[issuer]
+	if !ok {
+		e = &providerEntry{}
+		v.providers[issuer] = e
+	}
+	v.mu.Unlock()
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.provider != nil && v.now().Sub(e.fetchedAt) < jwksTTL {
+		return e.provider, nil
+	}
+	if e.err != nil && v.now().Sub(e.failedAt) < discoveryRetryDelay {
+		// A fetch failed moments ago; don't turn every request into an
+		// outbound attempt. A stale provider, if any, keeps serving
+		// until the retry delay has passed.
+		if e.provider != nil {
+			return e.provider, nil
+		}
+		return nil, e.err
 	}
 	p, err := v.discoverProvider(ctx, issuer)
 	if err != nil {
-		if ok {
+		// A canceled or deadlined *request* context says nothing about
+		// the issuer's health — don't poison the negative cache with it.
+		if ctx.Err() == nil {
+			e.err = err
+			e.failedAt = v.now()
+		}
+		if e.provider != nil {
 			// Fail safe: a failed refresh must not drop key material
 			// that was fetched successfully before. The stale provider
-			// keeps serving and the refresh is retried on the next
-			// request; only a successful rebuild replaces it.
-			return cached.provider, nil
+			// keeps serving and the refresh is retried once the retry
+			// delay has passed; only a successful rebuild replaces it.
+			return e.provider, nil
 		}
 		return nil, err
 	}
-	v.providers[issuer] = cachedProvider{provider: p, fetchedAt: v.now()}
+	e.provider = p
+	e.fetchedAt = v.now()
+	e.err = nil
 	return p, nil
 }
 
