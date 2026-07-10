@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -252,6 +253,60 @@ func TestLoadCAKey(t *testing.T) {
 		path := writeTestCAKey(t, 0o440)
 		if _, err := LoadCAKey(path, true); err != nil {
 			t.Fatalf("LoadCAKey with skip set rejected 0440: %v", err)
+		}
+	})
+
+	t.Run("not a regular file", func(t *testing.T) {
+		if _, err := LoadCAKey(t.TempDir(), false); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Fatalf("expected not-a-regular-file error, got %v", err)
+		}
+	})
+
+	t.Run("fifo is rejected without blocking", func(t *testing.T) {
+		// Opening a FIFO read-only without O_NONBLOCK blocks until a
+		// writer appears; the loader must instead fail fast on the
+		// regular-file check. Run the load in a goroutine so a
+		// regression shows up as a test failure, not a hang.
+		fifo := filepath.Join(t.TempDir(), "ca_key_fifo")
+		if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan error, 1)
+		go func() {
+			_, err := LoadCAKey(fifo, false)
+			done <- err
+		}()
+		select {
+		case err := <-done:
+			if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+				t.Fatalf("expected not-a-regular-file error, got %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("LoadCAKey blocked on a FIFO instead of rejecting it")
+		}
+	})
+
+	t.Run("symlink to key file is followed", func(t *testing.T) {
+		// Checks run on the opened descriptor, so a symlink resolves to
+		// its target and the permission check applies to the target.
+		path := writeTestCAKey(t, 0o600)
+		link := filepath.Join(t.TempDir(), "ca_key_link")
+		if err := os.Symlink(path, link); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadCAKey(link, false); err != nil {
+			t.Fatalf("LoadCAKey via symlink: %v", err)
+		}
+	})
+
+	t.Run("symlink to loose-permission key file is rejected", func(t *testing.T) {
+		path := writeTestCAKey(t, 0o644)
+		link := filepath.Join(t.TempDir(), "ca_key_link")
+		if err := os.Symlink(path, link); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadCAKey(link, false); err == nil || !strings.Contains(err.Error(), "permissions") {
+			t.Fatalf("expected permissions error, got %v", err)
 		}
 	})
 
