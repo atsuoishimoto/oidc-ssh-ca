@@ -33,7 +33,7 @@ jobs:
           # branch the workflow was dispatched from.
           ref: ${{ inputs.tag }}
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
