@@ -1,12 +1,12 @@
 module github.com/atsuoishimoto/oidc-ssh-ca
 
-go 1.25.0
+go 1.26.0
 
 toolchain go1.27.0
 
 require (
 	github.com/coreos/go-oidc/v3 v3.20.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
